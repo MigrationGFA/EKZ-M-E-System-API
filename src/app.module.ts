@@ -8,6 +8,9 @@ import { IndicatorsModule } from './indicators/indicators.module.js';
 import { FormsModule } from './forms/forms.module.js';
 import { SubmissionsModule } from './submissions/submissions.module.js';
 import { LocationsModule } from './locations/locations.module.js';
+import { DashboardModule } from './dashboard/dashboard.module.js';
+import { AlertsModule } from './alerts/alerts.module.js';
+import { AuditModule } from './audit/audit.module.js';
 
 @Module({
   imports: [
@@ -31,6 +34,9 @@ import { LocationsModule } from './locations/locations.module.js';
     FormsModule,
     SubmissionsModule,
     LocationsModule,
+    DashboardModule,
+    AlertsModule,
+    AuditModule,
   ],
 })
 export class AppModule {}
