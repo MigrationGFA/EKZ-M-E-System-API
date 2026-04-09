@@ -11,6 +11,8 @@ import { LocationsModule } from './locations/locations.module.js';
 import { DashboardModule } from './dashboard/dashboard.module.js';
 import { AlertsModule } from './alerts/alerts.module.js';
 import { AuditModule } from './audit/audit.module.js';
+import { ApiTokensModule } from './api-tokens/api-tokens.module.js';
+import { ReportsModule } from './reports/reports.module.js';
 
 @Module({
   imports: [
@@ -37,6 +39,8 @@ import { AuditModule } from './audit/audit.module.js';
     DashboardModule,
     AlertsModule,
     AuditModule,
+    ApiTokensModule,
+    ReportsModule,
   ],
 })
 export class AppModule {}
