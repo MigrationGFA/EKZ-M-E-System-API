@@ -4,11 +4,15 @@ import {
   IsOptional,
   IsDateString,
   ValidateNested,
+  IsNumber,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
 class LocationDto {
+  @IsNumber()
   lat: number;
+
+  @IsNumber()
   lng: number;
 }
 

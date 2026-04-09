@@ -145,7 +145,10 @@ export class LocationsService {
     const loc = await this.locRepo.findOne({ where: { id } });
     if (!loc) throw new NotFoundException('Location not found');
 
-    Object.assign(loc, dto);
+    const updates = Object.fromEntries(
+      Object.entries(dto).filter(([, v]) => v !== undefined),
+    );
+    Object.assign(loc, updates);
     const saved = await this.locRepo.save(loc);
 
     const indicators = await this.getLinkedIndicators(saved.indicator_ids);
