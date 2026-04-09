@@ -90,7 +90,10 @@ export class IndicatorsService {
     const indicator = await this.indicatorRepo.findOne({ where: { id } });
     if (!indicator) throw new NotFoundException('Indicator not found');
 
-    Object.assign(indicator, dto);
+    const updates = Object.fromEntries(
+      Object.entries(dto).filter(([, v]) => v !== undefined),
+    );
+    Object.assign(indicator, updates);
 
     // Recompute status if current_value or target changed
     if (dto.current_value !== undefined || dto.target !== undefined) {

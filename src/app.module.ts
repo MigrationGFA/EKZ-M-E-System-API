@@ -5,6 +5,9 @@ import { AuthModule } from './auth/auth.module.js';
 import { UsersModule } from './users/users.module.js';
 import { LogframeModule } from './logframe/logframe.module.js';
 import { IndicatorsModule } from './indicators/indicators.module.js';
+import { FormsModule } from './forms/forms.module.js';
+import { SubmissionsModule } from './submissions/submissions.module.js';
+import { LocationsModule } from './locations/locations.module.js';
 
 @Module({
   imports: [
@@ -25,6 +28,9 @@ import { IndicatorsModule } from './indicators/indicators.module.js';
     UsersModule,
     IndicatorsModule,
     LogframeModule,
+    FormsModule,
+    SubmissionsModule,
+    LocationsModule,
   ],
 })
 export class AppModule {}

@@ -135,7 +135,10 @@ export class LogframeService {
       dto.parent_id !== undefined ? dto.parent_id : node.parent_id;
     await this.validateParentConstraint(newType, newParentId ?? null);
 
-    Object.assign(node, dto);
+    const updates = Object.fromEntries(
+      Object.entries(dto).filter(([, v]) => v !== undefined),
+    );
+    Object.assign(node, updates);
     const saved = await this.nodeRepo.save(node);
 
     // Fetch indicators linked to this node
