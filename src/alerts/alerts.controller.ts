@@ -10,12 +10,14 @@ export class AlertsController {
 
   @Get()
   findAll(
+    @Request() req: any,
     @Query('unread_only') unread_only?: string,
     @Query('type') type?: string,
     @Query('page') page?: string,
     @Query('per_page') per_page?: string,
   ) {
     return this.alertsService.findAll({
+      user_id: req.user.id,
       unread_only: unread_only === 'true',
       type,
       page: page ? Number(page) : undefined,
