@@ -1,0 +1,184 @@
+import {
+  Injectable,
+  NotFoundException,
+  ConflictException,
+} from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { Indicator } from './indicator.entity.js';
+import { IndicatorProgress } from './indicator-progress.entity.js';
+import { CreateIndicatorDto } from './dto/create-indicator.dto.js';
+import { UpdateIndicatorDto } from './dto/update-indicator.dto.js';
+import { computeStatus } from './helpers/compute-status.js';
+
+@Injectable()
+export class IndicatorsService {
+  constructor(
+    @InjectRepository(Indicator)
+    private readonly indicatorRepo: Repository<Indicator>,
+    @InjectRepository(IndicatorProgress)
+    private readonly progressRepo: Repository<IndicatorProgress>,
+  ) {}
+
+  async findAll(filters: {
+    status?: string;
+    logframe_level_id?: string;
+    sdg_id?: number;
+    frequency?: string;
+    search?: string;
+    page?: number;
+    per_page?: number;
+  }) {
+    const qb = this.indicatorRepo.createQueryBuilder('i');
+
+    if (filters.status) {
+      qb.andWhere('i.status = :status', { status: filters.status });
+    }
+    if (filters.logframe_level_id) {
+      qb.andWhere('i.logframe_level_id = :lfId', {
+        lfId: filters.logframe_level_id,
+      });
+    }
+    if (filters.sdg_id) {
+      qb.andWhere(':sdgId = ANY(i.sdg_ids)', { sdgId: filters.sdg_id });
+    }
+    if (filters.frequency) {
+      qb.andWhere('i.frequency = :frequency', {
+        frequency: filters.frequency,
+      });
+    }
+    if (filters.search) {
+      qb.andWhere('(i.name ILIKE :search OR i.code ILIKE :search)', {
+        search: `%${filters.search}%`,
+      });
+    }
+
+    if (filters.page && filters.per_page) {
+      qb.skip((filters.page - 1) * filters.per_page).take(filters.per_page);
+    }
+
+    qb.orderBy('i.created_at', 'DESC');
+
+    const indicators = await qb.getMany();
+    return indicators.map((i) => this.serialize(i));
+  }
+
+  async findOne(id: string) {
+    const indicator = await this.indicatorRepo.findOne({ where: { id } });
+    if (!indicator) throw new NotFoundException('Indicator not found');
+    return this.serialize(indicator);
+  }
+
+  async create(dto: CreateIndicatorDto) {
+    const baseline = dto.baseline ?? 0;
+    const status = computeStatus(baseline, dto.target);
+
+    const indicator = this.indicatorRepo.create({
+      ...dto,
+      baseline,
+      current_value: baseline,
+      status,
+      sdg_ids: dto.sdg_ids ?? [],
+      logframe_level_id: dto.logframe_level_id ?? null,
+    });
+
+    const saved = await this.indicatorRepo.save(indicator);
+    return this.serialize(saved);
+  }
+
+  async update(id: string, dto: UpdateIndicatorDto) {
+    const indicator = await this.indicatorRepo.findOne({ where: { id } });
+    if (!indicator) throw new NotFoundException('Indicator not found');
+
+    const updates = Object.fromEntries(
+      Object.entries(dto).filter(([, v]) => v !== undefined),
+    );
+    Object.assign(indicator, updates);
+
+    // Recompute status if current_value or target changed
+    if (dto.current_value !== undefined || dto.target !== undefined) {
+      indicator.status = computeStatus(
+        Number(indicator.current_value),
+        Number(indicator.target),
+      );
+    }
+
+    const saved = await this.indicatorRepo.save(indicator);
+    return this.serialize(saved);
+  }
+
+  async remove(id: string) {
+    const indicator = await this.indicatorRepo.findOne({ where: { id } });
+    if (!indicator) throw new NotFoundException('Indicator not found');
+
+    // Check for linked submissions (will be checked once submissions table exists)
+    // For now, just check if the table exists and has references
+    try {
+      const submissions = await this.indicatorRepo.manager.query(
+        `SELECT COUNT(*) as count FROM submissions s
+         JOIN forms f ON s.form_id = f.id
+         WHERE $1 = ANY(f.indicator_ids)`,
+        [id],
+      );
+      if (submissions[0]?.count > 0) {
+        throw new ConflictException(
+          'Cannot delete indicator with linked submissions',
+        );
+      }
+    } catch (e) {
+      // If submissions table doesn't exist yet, allow deletion
+      if (e instanceof ConflictException) throw e;
+    }
+
+    await this.indicatorRepo.remove(indicator);
+  }
+
+  async getProgress(id: string, from?: string, to?: string) {
+    const indicator = await this.indicatorRepo.findOne({ where: { id } });
+    if (!indicator) throw new NotFoundException('Indicator not found');
+
+    const qb = this.progressRepo
+      .createQueryBuilder('p')
+      .where('p.indicator_id = :id', { id })
+      .orderBy('p.date', 'ASC');
+
+    if (from) {
+      qb.andWhere('p.date >= :from', { from });
+    }
+    if (to) {
+      qb.andWhere('p.date <= :to', { to });
+    }
+
+    const entries = await qb.getMany();
+    return entries.map((e) => ({
+      id: e.id,
+      indicatorId: e.indicator_id,
+      value: Number(e.value),
+      date: e.date,
+      notes: e.notes,
+      submittedBy: e.submitted_by,
+    }));
+  }
+
+  private serialize(ind: Indicator) {
+    return {
+      id: ind.id,
+      code: ind.code,
+      name: ind.name,
+      description: ind.description,
+      level: ind.level,
+      unit: ind.unit,
+      baseline: Number(ind.baseline),
+      target: Number(ind.target),
+      current_value: Number(ind.current_value),
+      status: ind.status,
+      frequency: ind.frequency,
+      logframe_level_id: ind.logframe_level_id,
+      sdg_ids: ind.sdg_ids,
+      responsible_party: ind.responsible_party,
+      means_of_verification: ind.means_of_verification,
+      createdAt: ind.created_at,
+      updatedAt: ind.updated_at,
+    };
+  }
+}
