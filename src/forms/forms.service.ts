@@ -52,7 +52,10 @@ export class FormsService {
   async update(id: string, dto: UpdateFormDto) {
     const form = await this.formRepo.findOne({ where: { id } });
     if (!form) throw new NotFoundException('Form not found');
-    Object.assign(form, dto);
+    const updates = Object.fromEntries(
+      Object.entries(dto).filter(([, v]) => v !== undefined),
+    );
+    Object.assign(form, updates);
     const saved = await this.formRepo.save(form);
     return this.serialize(saved);
   }
