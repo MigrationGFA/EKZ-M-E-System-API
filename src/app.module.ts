@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { ThrottlerModule } from '@nestjs/throttler';
 import { AuthModule } from './auth/auth.module.js';
 import { UsersModule } from './users/users.module.js';
 import { LogframeModule } from './logframe/logframe.module.js';
@@ -11,10 +12,13 @@ import { LocationsModule } from './locations/locations.module.js';
 import { DashboardModule } from './dashboard/dashboard.module.js';
 import { AlertsModule } from './alerts/alerts.module.js';
 import { AuditModule } from './audit/audit.module.js';
+import { ApiTokensModule } from './api-tokens/api-tokens.module.js';
+import { ReportsModule } from './reports/reports.module.js';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
+    ThrottlerModule.forRoot([{ ttl: 60000, limit: 10 }]),
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
@@ -37,6 +41,8 @@ import { AuditModule } from './audit/audit.module.js';
     DashboardModule,
     AlertsModule,
     AuditModule,
+    ApiTokensModule,
+    ReportsModule,
   ],
 })
 export class AppModule {}
