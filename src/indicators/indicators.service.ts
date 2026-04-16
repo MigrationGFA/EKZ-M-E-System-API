@@ -7,9 +7,13 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Indicator } from './indicator.entity.js';
 import { IndicatorProgress } from './indicator-progress.entity.js';
+import { Form } from '../forms/form.entity.js';
 import { CreateIndicatorDto } from './dto/create-indicator.dto.js';
 import { UpdateIndicatorDto } from './dto/update-indicator.dto.js';
+import { CreateProgressDto } from './dto/create-progress.dto.js';
 import { computeStatus } from './helpers/compute-status.js';
+import { UsersService } from '../users/users.service.js';
+import { MailService } from '../mail/mail.service.js';
 
 @Injectable()
 export class IndicatorsService {
@@ -18,6 +22,10 @@ export class IndicatorsService {
     private readonly indicatorRepo: Repository<Indicator>,
     @InjectRepository(IndicatorProgress)
     private readonly progressRepo: Repository<IndicatorProgress>,
+    @InjectRepository(Form)
+    private readonly formRepo: Repository<Form>,
+    private readonly usersService: UsersService,
+    private readonly mailService: MailService,
   ) {}
 
   async findAll(filters: {
@@ -90,6 +98,8 @@ export class IndicatorsService {
     const indicator = await this.indicatorRepo.findOne({ where: { id } });
     if (!indicator) throw new NotFoundException('Indicator not found');
 
+    const oldStatus = indicator.status;
+
     const updates = Object.fromEntries(
       Object.entries(dto).filter(([, v]) => v !== undefined),
     );
@@ -104,6 +114,14 @@ export class IndicatorsService {
     }
 
     const saved = await this.indicatorRepo.save(indicator);
+
+    this.notifyStatusChangeIfNeeded(
+      oldStatus,
+      saved.status,
+      saved.name,
+      saved.code,
+    );
+
     return this.serialize(saved);
   }
 
@@ -158,6 +176,94 @@ export class IndicatorsService {
       notes: e.notes,
       submittedBy: e.submitted_by,
     }));
+  }
+
+  async getLinkedForms(indicatorId: string) {
+    const indicator = await this.indicatorRepo.findOne({
+      where: { id: indicatorId },
+    });
+    if (!indicator) throw new NotFoundException('Indicator not found');
+
+    const forms = await this.formRepo
+      .createQueryBuilder('f')
+      .where(':indicatorId = ANY(f.indicator_ids)', { indicatorId })
+      .orderBy('f.created_at', 'DESC')
+      .getMany();
+
+    return forms.map((f) => ({
+      id: f.id,
+      title: f.title,
+      description: f.description,
+      fields: f.fields,
+      indicator_ids: f.indicator_ids,
+      assigned_to: f.assigned_to,
+      created_by: f.created_by,
+      status: f.status,
+      createdAt: f.created_at,
+    }));
+  }
+
+  async addProgress(indicatorId: string, dto: CreateProgressDto) {
+    const indicator = await this.indicatorRepo.findOne({
+      where: { id: indicatorId },
+    });
+    if (!indicator) throw new NotFoundException('Indicator not found');
+
+    const oldStatus = indicator.status;
+
+    const progress = this.progressRepo.create({
+      indicator_id: indicatorId,
+      value: dto.value,
+      date: new Date(dto.date),
+      notes: dto.notes ?? null,
+      submitted_by: dto.submittedBy,
+    });
+    const savedProgress = await this.progressRepo.save(progress);
+
+    indicator.current_value = dto.value;
+    indicator.status = computeStatus(
+      Number(indicator.current_value),
+      Number(indicator.target),
+    );
+    await this.indicatorRepo.save(indicator);
+
+    this.notifyStatusChangeIfNeeded(
+      oldStatus,
+      indicator.status,
+      indicator.name,
+      indicator.code,
+    );
+
+    return {
+      id: savedProgress.id,
+      indicatorId: indicator.id,
+      value: Number(savedProgress.value),
+      date: savedProgress.date,
+      notes: savedProgress.notes,
+      submittedBy: savedProgress.submitted_by,
+    };
+  }
+
+  private notifyStatusChangeIfNeeded(
+    oldStatus: string,
+    newStatus: string,
+    name: string,
+    code: string,
+  ): void {
+    if (newStatus === oldStatus) return;
+    if (!['at_risk', 'off_track'].includes(newStatus)) return;
+
+    void this.usersService.findAdminAndMeStaff().then((admins) => {
+      const emails = admins.map((u) => u.email);
+      if (emails.length > 0) {
+        void this.mailService.sendIndicatorStatusAlert(
+          emails,
+          name,
+          code,
+          newStatus,
+        );
+      }
+    });
   }
 
   private serialize(ind: Indicator) {

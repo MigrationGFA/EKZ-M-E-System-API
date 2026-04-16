@@ -3,6 +3,7 @@ import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
+import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthController } from './auth.controller.js';
 import { AuthService } from './auth.service.js';
 import { JwtStrategy } from './jwt.strategy.js';
@@ -10,9 +11,11 @@ import { JwtAuthGuard } from './jwt-auth.guard.js';
 import { RolesGuard } from './roles.guard.js';
 import { UsersModule } from '../users/users.module.js';
 import { AuditModule } from '../audit/audit.module.js';
+import { User } from '../users/user.entity.js';
 
 @Module({
   imports: [
+    TypeOrmModule.forFeature([User]),
     UsersModule,
     AuditModule,
     PassportModule,

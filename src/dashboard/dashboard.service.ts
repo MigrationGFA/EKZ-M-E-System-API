@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Indicator } from '../indicators/indicator.entity.js';
+import { IndicatorProgress } from '../indicators/indicator-progress.entity.js';
 import { Submission } from '../submissions/submission.entity.js';
 import { Alert } from '../alerts/alert.entity.js';
 import { SDG_NAMES } from '../common/constants/sdg-names.js';
@@ -26,6 +27,8 @@ export class DashboardService {
   constructor(
     @InjectRepository(Indicator)
     private readonly indicatorRepo: Repository<Indicator>,
+    @InjectRepository(IndicatorProgress)
+    private readonly progressRepo: Repository<IndicatorProgress>,
     @InjectRepository(Submission)
     private readonly subRepo: Repository<Submission>,
     @InjectRepository(Alert)
@@ -45,13 +48,21 @@ export class DashboardService {
       else offTrack++;
     }
 
-    // Submissions this month
+    // Submissions this month — apply from/to filters
     const now = new Date();
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-    const submissionsThisMonth = await this.subRepo
-      .createQueryBuilder('s')
-      .where('s.submitted_at >= :start', { start: monthStart.toISOString() })
-      .getCount();
+    const subQb = this.subRepo.createQueryBuilder('s');
+    if (from) {
+      subQb.andWhere('s.submitted_at >= :from', { from });
+    } else {
+      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+      subQb.andWhere('s.submitted_at >= :start', {
+        start: monthStart.toISOString(),
+      });
+    }
+    if (to) {
+      subQb.andWhere('s.submitted_at <= :to', { to });
+    }
+    const submissionsThisMonth = await subQb.getCount();
 
     const kpis = {
       total_indicators: indicators.length,
@@ -62,23 +73,8 @@ export class DashboardService {
       pending_sync: 0,
     };
 
-    // Monthly trend — 6 most recent calendar months, oldest first
-    const totalActual = indicators.reduce(
-      (s, i) => s + Number(i.current_value),
-      0,
-    );
-    const totalTarget = indicators.reduce((s, i) => s + Number(i.target), 0);
-
-    const monthly_trend: { month: string; actual: number; target: number }[] =
-      [];
-    for (let i = 5; i >= 0; i--) {
-      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      monthly_trend.push({
-        month: MONTH_NAMES[d.getMonth()],
-        actual: totalActual,
-        target: totalTarget,
-      });
-    }
+    // Monthly trend — real data from indicator_progress, 6 months
+    const monthly_trend = await this.buildMonthlyTrend(indicators, from, to);
 
     // Status distribution — always all three
     const status_distribution = [
@@ -111,11 +107,18 @@ export class DashboardService {
       }),
     );
 
-    // Recent submissions — last 5
-    const recentSubs = await this.subRepo.find({
-      order: { submitted_at: 'DESC' },
-      take: 5,
-    });
+    // Recent submissions — last 5, filtered by date range if provided
+    const recentSubQb = this.subRepo
+      .createQueryBuilder('s')
+      .orderBy('s.submitted_at', 'DESC')
+      .take(5);
+    if (from) {
+      recentSubQb.andWhere('s.submitted_at >= :from', { from });
+    }
+    if (to) {
+      recentSubQb.andWhere('s.submitted_at <= :to', { to });
+    }
+    const recentSubs = await recentSubQb.getMany();
     const recent_submissions = recentSubs.map((s) => ({
       id: s.id,
       formId: s.form_id,
@@ -152,5 +155,88 @@ export class DashboardService {
       recent_submissions,
       recent_alerts,
     };
+  }
+
+  private async buildMonthlyTrend(
+    indicators: Indicator[],
+    from?: string,
+    to?: string,
+  ): Promise<{ month: string; actual: number; target: number }[]> {
+    const now = new Date();
+    const totalTarget = indicators.reduce((s, i) => s + Number(i.target), 0);
+
+    // Build the 6-month window
+    const months: { start: Date; end: Date; label: string }[] = [];
+    for (let i = 5; i >= 0; i--) {
+      const start = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const end = new Date(
+        start.getFullYear(),
+        start.getMonth() + 1,
+        0,
+        23,
+        59,
+        59,
+        999,
+      );
+      months.push({ start, end, label: MONTH_NAMES[start.getMonth()] });
+    }
+
+    // Query actual progress data grouped by month
+    const rangeStart = months[0].start;
+    const rangeEnd = months[months.length - 1].end;
+
+    const progressQb = this.progressRepo
+      .createQueryBuilder('p')
+      .select("DATE_TRUNC('month', p.date)", 'month')
+      .addSelect('SUM(p.value)', 'actual')
+      .where('p.date >= :rangeStart', {
+        rangeStart: rangeStart.toISOString(),
+      })
+      .andWhere('p.date <= :rangeEnd', {
+        rangeEnd: rangeEnd.toISOString(),
+      })
+      .groupBy("DATE_TRUNC('month', p.date)")
+      .orderBy('month', 'ASC');
+
+    // Apply from/to filters if provided
+    if (from) {
+      progressQb.andWhere('p.date >= :from', { from });
+    }
+    if (to) {
+      progressQb.andWhere('p.date <= :to', { to });
+    }
+
+    const rawRows: { month: string; actual: string }[] =
+      await progressQb.getRawMany();
+
+    // Build a lookup: month key (YYYY-MM) → actual sum
+    const actualByMonth = new Map<string, number>();
+    for (const row of rawRows) {
+      const d = new Date(row.month);
+      const key = `${d.getFullYear()}-${String(d.getMonth()).padStart(2, '0')}`;
+      actualByMonth.set(key, Number(row.actual));
+    }
+
+    // If no progress data at all, fall back to current totals (original behavior)
+    if (actualByMonth.size === 0) {
+      const totalActual = indicators.reduce(
+        (s, i) => s + Number(i.current_value),
+        0,
+      );
+      return months.map((m) => ({
+        month: m.label,
+        actual: totalActual,
+        target: totalTarget,
+      }));
+    }
+
+    return months.map((m) => {
+      const key = `${m.start.getFullYear()}-${String(m.start.getMonth()).padStart(2, '0')}`;
+      return {
+        month: m.label,
+        actual: actualByMonth.get(key) ?? 0,
+        target: totalTarget,
+      };
+    });
   }
 }

@@ -2,12 +2,14 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Alert } from './alert.entity.js';
+import { MailService } from '../mail/mail.service.js';
 
 @Injectable()
 export class AlertsService {
   constructor(
     @InjectRepository(Alert)
     private readonly alertRepo: Repository<Alert>,
+    private readonly mailService: MailService,
   ) {}
 
   async findAll(filters: {
@@ -35,6 +37,31 @@ export class AlertsService {
     qb.orderBy('a.created_at', 'DESC');
     const alerts = await qb.getMany();
     return alerts.map((a) => this.serialize(a));
+  }
+
+  async create(dto: {
+    user_id: string;
+    user_email: string;
+    title: string;
+    description: string;
+    type: string;
+  }) {
+    const alert = this.alertRepo.create({
+      user_id: dto.user_id,
+      title: dto.title,
+      description: dto.description,
+      type: dto.type,
+    });
+    const saved = await this.alertRepo.save(alert);
+
+    void this.mailService.sendAlertNotification(
+      dto.user_email,
+      dto.title,
+      dto.description,
+      dto.type,
+    );
+
+    return this.serialize(saved);
   }
 
   async markRead(id: string) {

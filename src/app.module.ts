@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ThrottlerModule } from '@nestjs/throttler';
+import { MailModule } from './mail/mail.module.js';
 import { AuthModule } from './auth/auth.module.js';
 import { UsersModule } from './users/users.module.js';
 import { LogframeModule } from './logframe/logframe.module.js';
@@ -31,6 +32,7 @@ import { ReportsModule } from './reports/reports.module.js';
         migrationsRun: true,
       }),
     }),
+    MailModule,
     AuthModule,
     UsersModule,
     IndicatorsModule,

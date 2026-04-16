@@ -16,6 +16,7 @@ import { Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service.js';
 import { UsersService } from '../users/users.service.js';
 import { LoginDto } from './dto/login.dto.js';
+import { ChangePasswordDto } from './dto/change-password.dto.js';
 import { Public } from './public.decorator.js';
 
 @ApiTags('Auth')
@@ -32,7 +33,8 @@ export class AuthController {
   @ApiOperation({ summary: 'Login and obtain a JWT access token' })
   @ApiResponse({
     status: 200,
-    description: 'Returns user profile and JWT token',
+    description:
+      'Returns user profile and JWT token. is_default_password is true if the user has never changed their password.',
   })
   @ApiResponse({
     status: 401,
@@ -62,7 +64,35 @@ export class AuthController {
         name: user.name,
         role: user.role,
         avatar: user.avatar,
+        is_default_password: user.is_default_password,
       },
     };
+  }
+
+  @Post('change-password')
+  @ApiBearerAuth('JWT')
+  @ApiOperation({
+    summary: 'Change own password',
+    description:
+      'Authenticated users change their own password. Sets is_default_password to false on success.',
+  })
+  @ApiResponse({
+    status: 201,
+    description: '{ message: "Password updated successfully" }',
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Current password is incorrect',
+  })
+  @ApiResponse({ status: 400, description: 'Validation error' })
+  async changePassword(
+    @Request() req: any,
+    @Body() dto: ChangePasswordDto,
+  ) {
+    return this.authService.changePassword(
+      req.user.id,
+      dto.current_password,
+      dto.new_password,
+    );
   }
 }

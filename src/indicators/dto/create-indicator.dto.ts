@@ -65,4 +65,15 @@ export class CreateIndicatorDto {
   @ApiProperty({ example: 'Training completion certificates' })
   @IsString()
   means_of_verification: string;
+
+  // Accepted but ignored — status is auto-computed, current_value defaults to baseline
+  @ApiPropertyOptional({ description: 'Ignored on create — auto-computed from baseline/target ratio' })
+  @IsOptional()
+  @IsString()
+  status?: string;
+
+  @ApiPropertyOptional({ description: 'Ignored on create — defaults to baseline value' })
+  @IsOptional()
+  @IsNumber()
+  current_value?: number;
 }

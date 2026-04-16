@@ -2,13 +2,18 @@ import {
   Injectable,
   NotFoundException,
   ConflictException,
+  BadRequestException,
+  UnprocessableEntityException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { Submission } from './submission.entity.js';
 import { ProjectLocation } from '../locations/project-location.entity.js';
+import { Form } from '../forms/form.entity.js';
 import { CreateSubmissionDto } from './dto/create-submission.dto.js';
 import { applyGeofence } from './helpers/geofence.js';
+import { UsersService } from '../users/users.service.js';
+import { MailService } from '../mail/mail.service.js';
 
 @Injectable()
 export class SubmissionsService {
@@ -17,6 +22,10 @@ export class SubmissionsService {
     private readonly subRepo: Repository<Submission>,
     @InjectRepository(ProjectLocation)
     private readonly locRepo: Repository<ProjectLocation>,
+    @InjectRepository(Form)
+    private readonly formRepo: Repository<Form>,
+    private readonly usersService: UsersService,
+    private readonly mailService: MailService,
   ) {}
 
   async findAll(filters: {
@@ -51,12 +60,24 @@ export class SubmissionsService {
   }
 
   async create(dto: CreateSubmissionDto) {
+    // FK validation — give a clean 422 rather than a cryptic DB constraint error
+    const formExists = await this.formRepo.existsBy({ id: dto.formId });
+    if (!formExists) {
+      throw new UnprocessableEntityException(
+        `Form ${dto.formId} does not exist`,
+      );
+    }
+
     const existing = await this.subRepo.findOne({ where: { id: dto.id } });
     if (existing) {
       throw new ConflictException(
         `Submission with id ${dto.id} already exists`,
       );
     }
+
+    // Compute geofence before the first save to avoid a second round-trip
+    const locations = await this.locRepo.find();
+    const geo = applyGeofence(dto.location ?? null, locations);
 
     const sub = this.subRepo.create({
       id: dto.id,
@@ -65,16 +86,16 @@ export class SubmissionsService {
       data: dto.data,
       location: dto.location ?? null,
       submitted_at: new Date(dto.submittedAt),
+      location_id: geo.location_id,
+      on_site: geo.on_site,
     });
 
     const saved = await this.subRepo.save(sub);
 
-    // Geofencing
-    const locations = await this.locRepo.find();
-    const geo = applyGeofence(saved.location, locations);
-    saved.location_id = geo.location_id;
-    saved.on_site = geo.on_site;
-    await this.subRepo.save(saved);
+    // Off-site alert
+    if (geo.on_site === false) {
+      void this.notifyOffSite(saved.id, dto.officerId);
+    }
 
     return { id: saved.id, status: 'accepted' };
   }
@@ -82,18 +103,48 @@ export class SubmissionsService {
   async createBatch(dtos: CreateSubmissionDto[]) {
     const accepted: string[] = [];
     const rejected: { id: string; reason: string }[] = [];
+
+    // Fetch all locations once — shared across every submission in the batch
     const locations = await this.locRepo.find();
+
+    // Fetch admin/me_staff recipients once for potential off-site alerts
+    const adminRecipients = await this.usersService.findAdminAndMeStaff();
+    const adminEmails = adminRecipients.map((u) => u.email);
+
+    // Bulk duplicate check — one query instead of N individual findOne calls
+    const incomingIds = dtos.map((d) => d.id);
+    const existingRows = await this.subRepo.find({
+      where: { id: In(incomingIds) },
+      select: ['id'],
+    });
+    const existingIds = new Set(existingRows.map((r) => r.id));
+
+    // Validate all formIds in a single query
+    const uniqueFormIds = [...new Set(dtos.map((d) => d.formId))];
+    const validForms = await this.formRepo.find({
+      where: { id: In(uniqueFormIds) },
+      select: ['id'],
+    });
+    const validFormIds = new Set(validForms.map((f) => f.id));
 
     for (const dto of dtos) {
       try {
-        const existing = await this.subRepo.findOne({
-          where: { id: dto.id },
-        });
-        if (existing) {
-          // Idempotent — silently accept duplicates
+        // Idempotent — silently accept already-persisted submissions
+        if (existingIds.has(dto.id)) {
           accepted.push(dto.id);
           continue;
         }
+
+        if (!validFormIds.has(dto.formId)) {
+          rejected.push({
+            id: dto.id,
+            reason: `Form ${dto.formId} does not exist`,
+          });
+          continue;
+        }
+
+        // Compute geofence before save — single save per submission
+        const geo = applyGeofence(dto.location ?? null, locations);
 
         const sub = this.subRepo.create({
           id: dto.id,
@@ -102,16 +153,22 @@ export class SubmissionsService {
           data: dto.data,
           location: dto.location ?? null,
           submitted_at: new Date(dto.submittedAt),
+          location_id: geo.location_id,
+          on_site: geo.on_site,
         });
 
-        const saved = await this.subRepo.save(sub);
-
-        const geo = applyGeofence(saved.location, locations);
-        saved.location_id = geo.location_id;
-        saved.on_site = geo.on_site;
-        await this.subRepo.save(saved);
-
+        await this.subRepo.save(sub);
         accepted.push(dto.id);
+
+        // Off-site alert for newly saved submissions
+        if (geo.on_site === false && adminEmails.length > 0) {
+          const officer = await this.usersService.findById(dto.officerId);
+          void this.mailService.sendOffSiteAlert(
+            adminEmails,
+            dto.id,
+            officer?.name ?? dto.officerId,
+          );
+        }
       } catch (e: unknown) {
         const message = e instanceof Error ? e.message : 'Unknown error';
         rejected.push({ id: dto.id, reason: message });
@@ -125,10 +182,53 @@ export class SubmissionsService {
     const sub = await this.subRepo.findOne({ where: { id } });
     if (!sub) throw new NotFoundException('Submission not found');
 
+    // Guard against re-validating an already-approved submission
+    if (sub.validation_status === 'approved') {
+      throw new BadRequestException(
+        'Submission is already approved and cannot be re-validated',
+      );
+    }
+
     sub.validation_status = action === 'approve' ? 'approved' : 'rejected';
     sub.validation_comment = comment ?? null;
     const saved = await this.subRepo.save(sub);
+
+    // Notify the officer
+    const officer = await this.usersService.findById(sub.officer_id);
+    if (officer) {
+      if (action === 'approve') {
+        void this.mailService.sendSubmissionApproved(
+          officer.email,
+          officer.name,
+          id,
+        );
+      } else {
+        void this.mailService.sendSubmissionRejected(
+          officer.email,
+          officer.name,
+          id,
+          comment ?? '',
+        );
+      }
+    }
+
     return this.serialize(saved);
+  }
+
+  private async notifyOffSite(
+    submissionId: string,
+    officerId: string,
+  ): Promise<void> {
+    const admins = await this.usersService.findAdminAndMeStaff();
+    const emails = admins.map((u) => u.email);
+    if (emails.length === 0) return;
+
+    const officer = await this.usersService.findById(officerId);
+    void this.mailService.sendOffSiteAlert(
+      emails,
+      submissionId,
+      officer?.name ?? officerId,
+    );
   }
 
   private serialize(s: Submission) {
