@@ -4,12 +4,16 @@ import { Repository } from 'typeorm';
 import { randomBytes } from 'crypto';
 import * as bcrypt from 'bcrypt';
 import { ApiToken } from './api-token.entity.js';
+import { UsersService } from '../users/users.service.js';
+import { MailService } from '../mail/mail.service.js';
 
 @Injectable()
 export class ApiTokensService {
   constructor(
     @InjectRepository(ApiToken)
     private readonly tokenRepo: Repository<ApiToken>,
+    private readonly usersService: UsersService,
+    private readonly mailService: MailService,
   ) {}
 
   async findAll() {
@@ -37,6 +41,10 @@ export class ApiTokensService {
     });
     const saved = await this.tokenRepo.save(token);
 
+    void this.notifyAdmins((emails) =>
+      this.mailService.sendTokenCreated(emails, name, saved.token_prefix),
+    );
+
     return {
       id: saved.id,
       name: saved.name,
@@ -50,6 +58,21 @@ export class ApiTokensService {
     const token = await this.tokenRepo.findOne({ where: { id } });
     if (!token) throw new NotFoundException('Token not found');
     await this.tokenRepo.remove(token);
+
+    void this.notifyAdmins((emails) =>
+      this.mailService.sendTokenRevoked(emails, token.name),
+    );
+
     return { success: true };
+  }
+
+  private async notifyAdmins(
+    send: (emails: string[]) => void,
+  ): Promise<void> {
+    const admins = await this.usersService.findAdminAndMeStaff();
+    const emails = admins.map((u) => u.email);
+    if (emails.length > 0) {
+      send(emails);
+    }
   }
 }

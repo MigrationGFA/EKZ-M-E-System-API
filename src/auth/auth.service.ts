@@ -3,6 +3,10 @@ import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { UsersService } from '../users/users.service.js';
 import { AuditService } from '../audit/audit.service.js';
+import { MailService } from '../mail/mail.service.js';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { User } from '../users/user.entity.js';
 
 @Injectable()
 export class AuthService {
@@ -10,6 +14,9 @@ export class AuthService {
     private readonly usersService: UsersService,
     private readonly jwtService: JwtService,
     private readonly auditService: AuditService,
+    private readonly mailService: MailService,
+    @InjectRepository(User)
+    private readonly usersRepo: Repository<User>,
   ) {}
 
   async login(email: string, password: string) {
@@ -41,8 +48,38 @@ export class AuthService {
         name: user.name,
         role: user.role,
         avatar: user.avatar,
+        is_default_password: user.is_default_password,
       },
       token,
     };
+  }
+
+  async changePassword(
+    userId: string,
+    currentPassword: string,
+    newPassword: string,
+  ) {
+    const user = await this.usersRepo.findOne({ where: { id: userId } });
+    if (!user) throw new UnauthorizedException('User not found');
+
+    const valid = await bcrypt.compare(currentPassword, user.password_hash);
+    if (!valid) throw new UnauthorizedException('Current password is incorrect');
+
+    user.password_hash = await bcrypt.hash(newPassword, 10);
+    user.is_default_password = false;
+    await this.usersRepo.save(user);
+
+    void this.mailService.sendPasswordChanged(user.email, user.name);
+
+    void this.auditService.log({
+      user_id: user.id,
+      user_name: user.name,
+      action: 'update',
+      resource: 'user',
+      resource_id: user.id,
+      after_data: { is_default_password: false },
+    });
+
+    return { message: 'Password updated successfully' };
   }
 }

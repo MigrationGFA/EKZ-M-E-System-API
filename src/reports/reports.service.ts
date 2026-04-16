@@ -2,12 +2,14 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Report } from './report.entity.js';
+import { MailService } from '../mail/mail.service.js';
 
 @Injectable()
 export class ReportsService {
   constructor(
     @InjectRepository(Report)
     private readonly reportRepo: Repository<Report>,
+    private readonly mailService: MailService,
   ) {}
 
   async findAll() {
@@ -30,6 +32,7 @@ export class ReportsService {
     format: string,
     generatedBy: string,
     filters: Record<string, any>,
+    generatorEmail: string,
   ) {
     const report = this.reportRepo.create({
       title,
@@ -40,6 +43,13 @@ export class ReportsService {
       download_url: '#',
     });
     const saved = await this.reportRepo.save(report);
+
+    void this.mailService.sendReportReady(
+      generatorEmail,
+      generatedBy,
+      title,
+      format,
+    );
 
     return {
       report_id: saved.id,

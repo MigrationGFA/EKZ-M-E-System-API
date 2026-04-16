@@ -2,11 +2,16 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Submission } from './submission.entity.js';
 import { ProjectLocation } from '../locations/project-location.entity.js';
+import { Form } from '../forms/form.entity.js';
 import { SubmissionsService } from './submissions.service.js';
 import { SubmissionsController } from './submissions.controller.js';
+import { UsersModule } from '../users/users.module.js';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Submission, ProjectLocation])],
+  imports: [
+    TypeOrmModule.forFeature([Submission, ProjectLocation, Form]),
+    UsersModule,
+  ],
   controllers: [SubmissionsController],
   providers: [SubmissionsService],
   exports: [SubmissionsService, TypeOrmModule],

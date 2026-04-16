@@ -29,7 +29,7 @@ export class ReportsController {
   ) {}
 
   @Get()
-  @Roles(UserRole.ADMIN, UserRole.ME_STAFF, UserRole.VIEWER)
+  @Roles(UserRole.ADMIN, UserRole.ME_STAFF, UserRole.PROGRAMME_STAFF, UserRole.VIEWER)
   @ApiOperation({ summary: 'List all report metadata records' })
   @ApiResponse({ status: 200, description: 'Plain array of report objects' })
   findAll() {
@@ -59,12 +59,14 @@ export class ReportsController {
 
     const requestingUser = await this.usersService.findById(req.user.id);
     const generatedBy: string = requestingUser?.name ?? req.user.email;
+    const generatorEmail: string = requestingUser?.email ?? req.user.email;
 
     return this.reportsService.generate(
       dto.title,
       dto.format,
       generatedBy,
       filters,
+      generatorEmail,
     );
   }
 }

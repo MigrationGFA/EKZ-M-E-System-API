@@ -9,6 +9,7 @@ import {
   Query,
   HttpCode,
   HttpStatus,
+  ParseUUIDPipe,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -21,6 +22,7 @@ import {
 import { IndicatorsService } from './indicators.service.js';
 import { CreateIndicatorDto } from './dto/create-indicator.dto.js';
 import { UpdateIndicatorDto } from './dto/update-indicator.dto.js';
+import { CreateProgressDto } from './dto/create-progress.dto.js';
 import { Roles } from '../auth/roles.decorator.js';
 import { UserRole } from '../common/enums/user-role.enum.js';
 
@@ -111,6 +113,39 @@ export class IndicatorsController {
     @Query('to') to?: string,
   ) {
     return this.indicatorsService.getProgress(id, from, to);
+  }
+
+  @Post(':id/progress')
+  @Roles(UserRole.ADMIN, UserRole.ME_STAFF, UserRole.PROGRAMME_STAFF)
+  @ApiOperation({
+    summary: 'Log a progress entry for an indicator',
+    description:
+      'Creates a new progress entry and updates the indicator current_value and status.',
+  })
+  @ApiParam({ name: 'id', description: 'Indicator UUID' })
+  @ApiResponse({
+    status: 201,
+    description: 'Created progress entry with updated indicator status',
+  })
+  @ApiResponse({ status: 404, description: 'Indicator not found' })
+  addProgress(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: CreateProgressDto,
+  ) {
+    return this.indicatorsService.addProgress(id, dto);
+  }
+
+  @Get(':id/forms')
+  @ApiOperation({
+    summary: 'Get forms linked to an indicator',
+    description:
+      'Returns forms where this indicator ID is in the indicator_ids array.',
+  })
+  @ApiParam({ name: 'id', description: 'Indicator UUID' })
+  @ApiResponse({ status: 200, description: 'Array of linked forms' })
+  @ApiResponse({ status: 404, description: 'Indicator not found' })
+  getLinkedForms(@Param('id') id: string) {
+    return this.indicatorsService.getLinkedForms(id);
   }
 
   @Post()

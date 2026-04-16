@@ -18,24 +18,6 @@ const SEED_USERS = [
     password: 'Admin123!',
     role: 'admin',
   },
-  {
-    email: 'me@ekz.com',
-    name: 'Funke Ogunleye',
-    password: 'Staff123!',
-    role: 'me_staff',
-  },
-  {
-    email: 'prog@ekz.com',
-    name: 'Chidi Nwosu',
-    password: 'Staff123!',
-    role: 'programme_staff',
-  },
-  {
-    email: 'viewer@ekz.com',
-    name: 'Bisi Adeyemi',
-    password: 'Staff123!',
-    role: 'viewer',
-  },
 ];
 
 async function seed() {
@@ -54,7 +36,7 @@ async function seed() {
 
     const hash = await bcrypt.hash(user.password, 10);
     await dataSource.query(
-      `INSERT INTO users (email, name, password_hash, role) VALUES ($1, $2, $3, $4)`,
+      `INSERT INTO users (email, name, password_hash, role, is_default_password) VALUES ($1, $2, $3, $4, true)`,
       [user.email, user.name, hash, user.role],
     );
     console.log(`Created user: ${user.email} (${user.role})`);

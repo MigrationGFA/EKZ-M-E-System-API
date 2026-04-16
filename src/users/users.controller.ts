@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Body, Param, Query } from '@nestjs/common';
+import { Controller, Get, Post, Put, Body, Param, Query, Request } from '@nestjs/common';
 import {
   ApiTags,
   ApiOperation,
@@ -28,7 +28,7 @@ export class UsersController {
   @ApiOperation({
     summary: 'List all users (admin only)',
     description:
-      'Never returns password_hash. Includes submission_count per user.',
+      'Never returns password_hash. Includes submission_count and is_default_password per user.',
   })
   @ApiQuery({
     name: 'role',
@@ -44,7 +44,8 @@ export class UsersController {
   @ApiQuery({ name: 'per_page', required: false, type: Number })
   @ApiResponse({
     status: 200,
-    description: 'Plain array of user objects with submission_count',
+    description:
+      'Plain array of user objects with submission_count and is_default_password',
   })
   @ApiResponse({ status: 403, description: 'Admin only' })
   findAll(
@@ -63,13 +64,13 @@ export class UsersController {
 
   @Post('invite')
   @ApiOperation({
-    summary: 'Invite (create) a new user',
+    summary: 'Create a new user (admin only)',
     description:
-      'Creates user with a temporary password. Returns 409 if email already exists.',
+      'Creates user with the default password. is_default_password is set to true. Returns 409 if email already exists.',
   })
   @ApiResponse({
     status: 200,
-    description: '{ message: "Invite sent to ..." }',
+    description: '{ message: "User <email> created successfully" }',
   })
   @ApiResponse({ status: 409, description: 'Email already exists' })
   invite(@Body() dto: InviteUserDto) {
@@ -84,8 +85,8 @@ export class UsersController {
   @ApiParam({ name: 'id', description: 'User UUID' })
   @ApiResponse({ status: 200, description: 'Full updated user object' })
   @ApiResponse({ status: 404, description: 'User not found' })
-  async updateRole(@Param('id') id: string, @Body() dto: UpdateRoleDto) {
-    const result = await this.usersService.updateRole(id, dto.role);
+  async updateRole(@Param('id') id: string, @Body() dto: UpdateRoleDto, @Request() req: { user: { id: string } }) {
+    const result = await this.usersService.updateRole(id, dto.role, req.user.id);
 
     await this.auditService.log({
       user_id: id,
@@ -102,7 +103,7 @@ export class UsersController {
 
   @Put(':id/deactivate')
   @ApiOperation({
-    summary: 'Deactivate a user',
+    summary: 'Deactivate a user (admin only)',
     description:
       'Deactivated users receive 401 on login. Writes an audit log entry.',
   })
@@ -112,8 +113,8 @@ export class UsersController {
     description: 'Full user object with active: false',
   })
   @ApiResponse({ status: 404, description: 'User not found' })
-  async deactivate(@Param('id') id: string) {
-    const user = await this.usersService.deactivate(id);
+  async deactivate(@Param('id') id: string, @Request() req: { user: { id: string } }) {
+    const user = await this.usersService.deactivate(id, req.user.id);
 
     await this.auditService.log({
       user_id: id,
@@ -126,5 +127,59 @@ export class UsersController {
     });
 
     return user;
+  }
+
+  @Put(':id/reactivate')
+  @ApiOperation({
+    summary: 'Reactivate a deactivated user (admin only)',
+    description: 'Sets active to true. Writes an audit log entry.',
+  })
+  @ApiParam({ name: 'id', description: 'User UUID' })
+  @ApiResponse({
+    status: 200,
+    description: 'Full user object with active: true',
+  })
+  @ApiResponse({ status: 404, description: 'User not found' })
+  async reactivate(@Param('id') id: string) {
+    const user = await this.usersService.reactivate(id);
+
+    await this.auditService.log({
+      user_id: id,
+      user_name: user.name,
+      action: 'update',
+      resource: 'user',
+      resource_id: id,
+      before_data: { active: false },
+      after_data: { active: true },
+    });
+
+    return user;
+  }
+
+  @Put(':id/reset-password')
+  @ApiOperation({
+    summary: 'Reset a user password to default (admin only)',
+    description:
+      'Resets password to the system default and sets is_default_password to true. Writes an audit log entry.',
+  })
+  @ApiParam({ name: 'id', description: 'User UUID' })
+  @ApiResponse({
+    status: 200,
+    description: '{ message: "Password reset to default" }',
+  })
+  @ApiResponse({ status: 404, description: 'User not found' })
+  async resetPassword(@Param('id') id: string) {
+    const result = await this.usersService.resetPassword(id);
+
+    await this.auditService.log({
+      user_id: id,
+      user_name: result.userName,
+      action: 'update',
+      resource: 'user',
+      resource_id: id,
+      after_data: { is_default_password: true },
+    });
+
+    return { message: result.message };
   }
 }
