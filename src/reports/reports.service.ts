@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Report } from './report.entity.js';
 import { MailService } from '../mail/mail.service.js';
+import { AuditService } from '../audit/audit.service.js';
 
 @Injectable()
 export class ReportsService {
@@ -10,6 +11,7 @@ export class ReportsService {
     @InjectRepository(Report)
     private readonly reportRepo: Repository<Report>,
     private readonly mailService: MailService,
+    private readonly auditService: AuditService,
   ) {}
 
   async findAll() {
@@ -19,11 +21,11 @@ export class ReportsService {
     return reports.map((r) => ({
       id: r.id,
       title: r.title,
-      generated_by: r.generated_by,
-      generated_at: r.generated_at,
+      generatedBy: r.generated_by,
+      generatedAt: r.generated_at,
       format: r.format,
       filters: r.filters,
-      download_url: r.download_url,
+      downloadUrl: r.download_url,
     }));
   }
 
@@ -33,6 +35,7 @@ export class ReportsService {
     generatedBy: string,
     filters: Record<string, any>,
     generatorEmail: string,
+    actorId: string,
   ) {
     const report = this.reportRepo.create({
       title,
@@ -43,6 +46,15 @@ export class ReportsService {
       download_url: '#',
     });
     const saved = await this.reportRepo.save(report);
+
+    void this.auditService.log({
+      user_id: actorId,
+      user_name: generatorEmail,
+      action: 'create',
+      resource: 'report',
+      resource_id: saved.id,
+      after_data: { title, format, filters, generated_by: generatedBy },
+    });
 
     void this.mailService.sendReportReady(
       generatorEmail,

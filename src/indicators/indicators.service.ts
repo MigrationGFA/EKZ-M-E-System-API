@@ -14,6 +14,8 @@ import { CreateProgressDto } from './dto/create-progress.dto.js';
 import { computeStatus } from './helpers/compute-status.js';
 import { UsersService } from '../users/users.service.js';
 import { MailService } from '../mail/mail.service.js';
+import { AuditService } from '../audit/audit.service.js';
+import { AlertsService } from '../alerts/alerts.service.js';
 
 @Injectable()
 export class IndicatorsService {
@@ -26,6 +28,8 @@ export class IndicatorsService {
     private readonly formRepo: Repository<Form>,
     private readonly usersService: UsersService,
     private readonly mailService: MailService,
+    private readonly auditService: AuditService,
+    private readonly alertsService: AlertsService,
   ) {}
 
   async findAll(filters: {
@@ -61,6 +65,8 @@ export class IndicatorsService {
       });
     }
 
+    const total = await qb.getCount();
+
     if (filters.page && filters.per_page) {
       qb.skip((filters.page - 1) * filters.per_page).take(filters.per_page);
     }
@@ -68,7 +74,13 @@ export class IndicatorsService {
     qb.orderBy('i.created_at', 'DESC');
 
     const indicators = await qb.getMany();
-    return indicators.map((i) => this.serialize(i));
+
+    return {
+      data: indicators.map((i) => this.serialize(i)),
+      total,
+      page: filters.page ?? 1,
+      per_page: filters.per_page ?? total,
+    };
   }
 
   async findOne(id: string) {
@@ -77,7 +89,7 @@ export class IndicatorsService {
     return this.serialize(indicator);
   }
 
-  async create(dto: CreateIndicatorDto) {
+  async create(dto: CreateIndicatorDto, actorId: string, actorName: string) {
     const baseline = dto.baseline ?? 0;
     const status = computeStatus(baseline, dto.target);
 
@@ -91,13 +103,25 @@ export class IndicatorsService {
     });
 
     const saved = await this.indicatorRepo.save(indicator);
-    return this.serialize(saved);
+    const result = this.serialize(saved);
+
+    void this.auditService.log({
+      user_id: actorId,
+      user_name: actorName,
+      action: 'create',
+      resource: 'indicator',
+      resource_id: saved.id,
+      after_data: result,
+    });
+
+    return result;
   }
 
-  async update(id: string, dto: UpdateIndicatorDto) {
+  async update(id: string, dto: UpdateIndicatorDto, actorId: string, actorName: string) {
     const indicator = await this.indicatorRepo.findOne({ where: { id } });
     if (!indicator) throw new NotFoundException('Indicator not found');
 
+    const beforeData = this.serialize(indicator);
     const oldStatus = indicator.status;
 
     const updates = Object.fromEntries(
@@ -122,12 +146,26 @@ export class IndicatorsService {
       saved.code,
     );
 
-    return this.serialize(saved);
+    const afterData = this.serialize(saved);
+
+    void this.auditService.log({
+      user_id: actorId,
+      user_name: actorName,
+      action: 'update',
+      resource: 'indicator',
+      resource_id: saved.id,
+      before_data: beforeData,
+      after_data: afterData,
+    });
+
+    return afterData;
   }
 
-  async remove(id: string) {
+  async remove(id: string, actorId: string, actorName: string) {
     const indicator = await this.indicatorRepo.findOne({ where: { id } });
     if (!indicator) throw new NotFoundException('Indicator not found');
+
+    const beforeData = this.serialize(indicator);
 
     // Check for linked submissions (will be checked once submissions table exists)
     // For now, just check if the table exists and has references
@@ -149,6 +187,15 @@ export class IndicatorsService {
     }
 
     await this.indicatorRepo.remove(indicator);
+
+    void this.auditService.log({
+      user_id: actorId,
+      user_name: actorName,
+      action: 'delete',
+      resource: 'indicator',
+      resource_id: id,
+      before_data: beforeData,
+    });
   }
 
   async getProgress(id: string, from?: string, to?: string) {
@@ -203,7 +250,7 @@ export class IndicatorsService {
     }));
   }
 
-  async addProgress(indicatorId: string, dto: CreateProgressDto) {
+  async addProgress(indicatorId: string, dto: CreateProgressDto, actorId: string, actorName: string) {
     const indicator = await this.indicatorRepo.findOne({
       where: { id: indicatorId },
     });
@@ -220,21 +267,29 @@ export class IndicatorsService {
     });
     const savedProgress = await this.progressRepo.save(progress);
 
-    indicator.current_value = dto.value;
-    indicator.status = computeStatus(
-      Number(indicator.current_value),
-      Number(indicator.target),
-    );
-    await this.indicatorRepo.save(indicator);
+    // Only update current_value if this entry is the most recent by date
+    const latestEntry = await this.progressRepo.findOne({
+      where: { indicator_id: indicatorId },
+      order: { date: 'DESC' },
+    });
 
-    this.notifyStatusChangeIfNeeded(
-      oldStatus,
-      indicator.status,
-      indicator.name,
-      indicator.code,
-    );
+    if (latestEntry && latestEntry.id === savedProgress.id) {
+      indicator.current_value = dto.value;
+      indicator.status = computeStatus(
+        Number(dto.value),
+        Number(indicator.target),
+      );
+      await this.indicatorRepo.save(indicator);
 
-    return {
+      this.notifyStatusChangeIfNeeded(
+        oldStatus,
+        indicator.status,
+        indicator.name,
+        indicator.code,
+      );
+    }
+
+    const progressResult = {
       id: savedProgress.id,
       indicatorId: indicator.id,
       value: Number(savedProgress.value),
@@ -242,6 +297,17 @@ export class IndicatorsService {
       notes: savedProgress.notes,
       submittedBy: savedProgress.submitted_by,
     };
+
+    void this.auditService.log({
+      user_id: actorId,
+      user_name: actorName,
+      action: 'create',
+      resource: 'indicator_progress',
+      resource_id: savedProgress.id,
+      after_data: progressResult,
+    });
+
+    return progressResult;
   }
 
   private notifyStatusChangeIfNeeded(
@@ -255,13 +321,26 @@ export class IndicatorsService {
 
     void this.usersService.findAdminAndMeStaff().then((admins) => {
       const emails = admins.map((u) => u.email);
-      if (emails.length > 0) {
-        void this.mailService.sendIndicatorStatusAlert(
-          emails,
-          name,
-          code,
-          newStatus,
-        );
+      if (emails.length === 0) return;
+
+      void this.mailService.sendIndicatorStatusAlert(
+        emails,
+        name,
+        code,
+        newStatus,
+      );
+
+      const title = `Indicator ${newStatus === 'off_track' ? 'Off Track' : 'At Risk'}: ${code}`;
+      const description = `"${name}" has moved to ${newStatus}. Review and take corrective action.`;
+
+      for (const admin of admins) {
+        void this.alertsService.create({
+          user_id: admin.id,
+          user_email: admin.email,
+          title,
+          description,
+          type: 'missed_target',
+        });
       }
     });
   }

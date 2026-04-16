@@ -2,7 +2,9 @@ import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ThrottlerModule } from '@nestjs/throttler';
+import { ScheduleModule } from '@nestjs/schedule';
 import { MailModule } from './mail/mail.module.js';
+import { HealthModule } from './health/health.module.js';
 import { AuthModule } from './auth/auth.module.js';
 import { UsersModule } from './users/users.module.js';
 import { LogframeModule } from './logframe/logframe.module.js';
@@ -15,11 +17,13 @@ import { AlertsModule } from './alerts/alerts.module.js';
 import { AuditModule } from './audit/audit.module.js';
 import { ApiTokensModule } from './api-tokens/api-tokens.module.js';
 import { ReportsModule } from './reports/reports.module.js';
+import { SchedulerModule } from './scheduler/scheduler.module.js';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     ThrottlerModule.forRoot([{ ttl: 60000, limit: 10 }]),
+    ScheduleModule.forRoot(),
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
@@ -33,6 +37,7 @@ import { ReportsModule } from './reports/reports.module.js';
       }),
     }),
     MailModule,
+    HealthModule,
     AuthModule,
     UsersModule,
     IndicatorsModule,
@@ -45,6 +50,7 @@ import { ReportsModule } from './reports/reports.module.js';
     AuditModule,
     ApiTokensModule,
     ReportsModule,
+    SchedulerModule,
   ],
 })
 export class AppModule {}

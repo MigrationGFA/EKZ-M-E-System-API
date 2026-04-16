@@ -46,13 +46,22 @@ export class AuditService {
     if (filters.to) {
       qb.andWhere('a.created_at <= :to', { to: filters.to });
     }
+
+    const total = await qb.getCount();
+
     if (filters.page && filters.per_page) {
       qb.skip((filters.page - 1) * filters.per_page).take(filters.per_page);
     }
 
     qb.orderBy('a.created_at', 'DESC');
     const entries = await qb.getMany();
-    return entries.map((e) => this.serialize(e));
+
+    return {
+      data: entries.map((e) => this.serialize(e)),
+      total,
+      page: filters.page ?? 1,
+      per_page: filters.per_page ?? total,
+    };
   }
 
   async create(input: AuditLogInput) {
