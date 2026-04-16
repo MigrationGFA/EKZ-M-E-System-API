@@ -7,6 +7,7 @@ import {
   Body,
   Param,
   Query,
+  Request,
   HttpCode,
   HttpStatus,
   ParseUUIDPipe,
@@ -131,8 +132,9 @@ export class IndicatorsController {
   addProgress(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: CreateProgressDto,
+    @Request() req: any,
   ) {
-    return this.indicatorsService.addProgress(id, dto);
+    return this.indicatorsService.addProgress(id, dto, req.user.id as string, req.user.email as string);
   }
 
   @Get(':id/forms')
@@ -155,8 +157,8 @@ export class IndicatorsController {
     description: 'Sets current_value = baseline and computes initial status.',
   })
   @ApiResponse({ status: 201, description: 'Created indicator' })
-  create(@Body() dto: CreateIndicatorDto) {
-    return this.indicatorsService.create(dto);
+  create(@Body() dto: CreateIndicatorDto, @Request() req: any) {
+    return this.indicatorsService.create(dto, req.user.id as string, req.user.email as string);
   }
 
   @Put(':id')
@@ -168,8 +170,8 @@ export class IndicatorsController {
   @ApiParam({ name: 'id', description: 'Indicator UUID' })
   @ApiResponse({ status: 200, description: 'Updated indicator' })
   @ApiResponse({ status: 404, description: 'Indicator not found' })
-  update(@Param('id') id: string, @Body() dto: UpdateIndicatorDto) {
-    return this.indicatorsService.update(id, dto);
+  update(@Param('id') id: string, @Body() dto: UpdateIndicatorDto, @Request() req: any) {
+    return this.indicatorsService.update(id, dto, req.user.id as string, req.user.email as string);
   }
 
   @Delete(':id')
@@ -179,7 +181,7 @@ export class IndicatorsController {
   @ApiParam({ name: 'id', description: 'Indicator UUID' })
   @ApiResponse({ status: 204, description: 'Deleted' })
   @ApiResponse({ status: 409, description: 'Indicator has linked submissions' })
-  remove(@Param('id') id: string) {
-    return this.indicatorsService.remove(id);
+  remove(@Param('id') id: string, @Request() req: any) {
+    return this.indicatorsService.remove(id, req.user.id as string, req.user.email as string);
   }
 }

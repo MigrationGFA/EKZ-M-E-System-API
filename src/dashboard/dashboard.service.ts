@@ -64,13 +64,17 @@ export class DashboardService {
     }
     const submissionsThisMonth = await subQb.getCount();
 
+    const pendingSync = await this.subRepo.count({
+      where: { validation_status: 'pending' },
+    });
+
     const kpis = {
       total_indicators: indicators.length,
       on_track: onTrack,
       at_risk: atRisk,
       off_track: offTrack,
       submissions_this_month: submissionsThisMonth,
-      pending_sync: 0,
+      pending_sync: pendingSync,
     };
 
     // Monthly trend — real data from indicator_progress, 6 months

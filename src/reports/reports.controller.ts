@@ -67,6 +67,7 @@ export class ReportsController {
       generatedBy,
       filters,
       generatorEmail,
+      req.user.id as string,
     );
   }
 }

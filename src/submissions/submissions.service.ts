@@ -14,6 +14,8 @@ import { CreateSubmissionDto } from './dto/create-submission.dto.js';
 import { applyGeofence } from './helpers/geofence.js';
 import { UsersService } from '../users/users.service.js';
 import { MailService } from '../mail/mail.service.js';
+import { AuditService } from '../audit/audit.service.js';
+import { AlertsService } from '../alerts/alerts.service.js';
 
 @Injectable()
 export class SubmissionsService {
@@ -26,6 +28,8 @@ export class SubmissionsService {
     private readonly formRepo: Repository<Form>,
     private readonly usersService: UsersService,
     private readonly mailService: MailService,
+    private readonly auditService: AuditService,
+    private readonly alertsService: AlertsService,
   ) {}
 
   async findAll(filters: {
@@ -50,16 +54,31 @@ export class SubmissionsService {
         vs: filters.validation_status,
       });
     }
+
+    const total = await qb.getCount();
+
     if (filters.page && filters.per_page) {
       qb.skip((filters.page - 1) * filters.per_page).take(filters.per_page);
     }
 
     qb.orderBy('s.submitted_at', 'DESC');
     const subs = await qb.getMany();
-    return subs.map((s) => this.serialize(s));
+
+    return {
+      data: subs.map((s) => this.serialize(s)),
+      total,
+      page: filters.page ?? 1,
+      per_page: filters.per_page ?? total,
+    };
   }
 
-  async create(dto: CreateSubmissionDto) {
+  async findOne(id: string) {
+    const sub = await this.subRepo.findOne({ where: { id } });
+    if (!sub) throw new NotFoundException('Submission not found');
+    return this.serialize(sub);
+  }
+
+  async create(dto: CreateSubmissionDto, actorId: string, actorName: string) {
     // FK validation — give a clean 422 rather than a cryptic DB constraint error
     const formExists = await this.formRepo.existsBy({ id: dto.formId });
     if (!formExists) {
@@ -92,15 +111,36 @@ export class SubmissionsService {
 
     const saved = await this.subRepo.save(sub);
 
+    void this.auditService.log({
+      user_id: actorId,
+      user_name: actorName,
+      action: 'submit',
+      resource: 'submission',
+      resource_id: saved.id,
+      after_data: { formId: dto.formId, officerId: dto.officerId, on_site: geo.on_site },
+    });
+
     // Off-site alert
     if (geo.on_site === false) {
       void this.notifyOffSite(saved.id, dto.officerId);
     }
 
+    // Sync success alert for the officer
+    const officer = await this.usersService.findById(dto.officerId);
+    if (officer) {
+      void this.alertsService.create({
+        user_id: officer.id,
+        user_email: officer.email,
+        title: 'Submission Synced',
+        description: `Your submission for form ${dto.formId} was received and recorded successfully.`,
+        type: 'sync_success',
+      });
+    }
+
     return { id: saved.id, status: 'accepted' };
   }
 
-  async createBatch(dtos: CreateSubmissionDto[]) {
+  async createBatch(dtos: CreateSubmissionDto[], actorId: string, actorName: string) {
     const accepted: string[] = [];
     const rejected: { id: string; reason: string }[] = [];
 
@@ -160,6 +200,15 @@ export class SubmissionsService {
         await this.subRepo.save(sub);
         accepted.push(dto.id);
 
+        void this.auditService.log({
+          user_id: actorId,
+          user_name: actorName,
+          action: 'submit',
+          resource: 'submission',
+          resource_id: dto.id,
+          after_data: { formId: dto.formId, officerId: dto.officerId, on_site: geo.on_site },
+        });
+
         // Off-site alert for newly saved submissions
         if (geo.on_site === false && adminEmails.length > 0) {
           const officer = await this.usersService.findById(dto.officerId);
@@ -168,6 +217,17 @@ export class SubmissionsService {
             dto.id,
             officer?.name ?? dto.officerId,
           );
+
+          // In-app alerts for admins/me_staff
+          for (const admin of adminRecipients) {
+            void this.alertsService.create({
+              user_id: admin.id,
+              user_email: admin.email,
+              title: 'Off-Site Submission Detected',
+              description: `Submission ${dto.id} was recorded outside all project geofences. Officer: ${officer?.name ?? dto.officerId}.`,
+              type: 'data_flag',
+            });
+          }
         }
       } catch (e: unknown) {
         const message = e instanceof Error ? e.message : 'Unknown error';
@@ -175,12 +235,30 @@ export class SubmissionsService {
       }
     }
 
+    // Send one sync_success alert per unique officer in the accepted list
+    const acceptedDtos = dtos.filter((d) => accepted.includes(d.id) && !existingIds.has(d.id));
+    const uniqueOfficerIds = [...new Set(acceptedDtos.map((d) => d.officerId))];
+    for (const officerId of uniqueOfficerIds) {
+      const off = await this.usersService.findById(officerId);
+      if (off) {
+        void this.alertsService.create({
+          user_id: off.id,
+          user_email: off.email,
+          title: 'Submissions Synced',
+          description: `Your submissions were received and recorded successfully.`,
+          type: 'sync_success',
+        });
+      }
+    }
+
     return { accepted, rejected };
   }
 
-  async validate(id: string, action: string, comment?: string) {
+  async validate(id: string, action: string, comment: string | undefined, actorId: string, actorName: string) {
     const sub = await this.subRepo.findOne({ where: { id } });
     if (!sub) throw new NotFoundException('Submission not found');
+
+    const beforeStatus = sub.validation_status;
 
     // Guard against re-validating an already-approved submission
     if (sub.validation_status === 'approved') {
@@ -192,6 +270,16 @@ export class SubmissionsService {
     sub.validation_status = action === 'approve' ? 'approved' : 'rejected';
     sub.validation_comment = comment ?? null;
     const saved = await this.subRepo.save(sub);
+
+    void this.auditService.log({
+      user_id: actorId,
+      user_name: actorName,
+      action: 'update',
+      resource: 'submission',
+      resource_id: id,
+      before_data: { validation_status: beforeStatus },
+      after_data: { validation_status: saved.validation_status, validation_comment: saved.validation_comment },
+    });
 
     // Notify the officer
     const officer = await this.usersService.findById(sub.officer_id);
@@ -220,15 +308,27 @@ export class SubmissionsService {
     officerId: string,
   ): Promise<void> {
     const admins = await this.usersService.findAdminAndMeStaff();
-    const emails = admins.map((u) => u.email);
-    if (emails.length === 0) return;
+    if (admins.length === 0) return;
 
     const officer = await this.usersService.findById(officerId);
+    const officerName = officer?.name ?? officerId;
+
     void this.mailService.sendOffSiteAlert(
-      emails,
+      admins.map((u) => u.email),
       submissionId,
-      officer?.name ?? officerId,
+      officerName,
     );
+
+    // Create in-app alert for each admin/me_staff
+    for (const admin of admins) {
+      void this.alertsService.create({
+        user_id: admin.id,
+        user_email: admin.email,
+        title: 'Off-Site Submission Detected',
+        description: `Submission ${submissionId} was recorded outside all project geofences. Officer: ${officerName}.`,
+        type: 'data_flag',
+      });
+    }
   }
 
   private serialize(s: Submission) {

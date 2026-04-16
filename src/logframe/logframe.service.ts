@@ -10,6 +10,7 @@ import { LogframeNode } from './logframe-node.entity.js';
 import { Indicator } from '../indicators/indicator.entity.js';
 import { CreateNodeDto } from './dto/create-node.dto.js';
 import { UpdateNodeDto } from './dto/update-node.dto.js';
+import { AuditService } from '../audit/audit.service.js';
 
 const PARENT_TYPE_MAP: Record<string, string | null> = {
   goal: null,
@@ -58,6 +59,7 @@ export class LogframeService {
     private readonly nodeRepo: Repository<LogframeNode>,
     @InjectRepository(Indicator)
     private readonly indicatorRepo: Repository<Indicator>,
+    private readonly auditService: AuditService,
   ) {}
 
   async getTree() {
@@ -106,7 +108,7 @@ export class LogframeService {
     return roots;
   }
 
-  async createNode(dto: CreateNodeDto) {
+  async createNode(dto: CreateNodeDto, actorId: string, actorName: string) {
     await this.validateParentConstraint(dto.type, dto.parent_id ?? null);
 
     const node = this.nodeRepo.create({
@@ -119,16 +121,29 @@ export class LogframeService {
     });
 
     const saved = await this.nodeRepo.save(node);
-    return {
+    const result = {
       ...saved,
       indicators: [],
       children: [],
     };
+
+    void this.auditService.log({
+      user_id: actorId,
+      user_name: actorName,
+      action: 'create',
+      resource: 'logframe_node',
+      resource_id: saved.id,
+      after_data: { id: saved.id, type: saved.type, code: saved.code, title: saved.title, parent_id: saved.parent_id },
+    });
+
+    return result;
   }
 
-  async updateNode(id: string, dto: UpdateNodeDto) {
+  async updateNode(id: string, dto: UpdateNodeDto, actorId: string, actorName: string) {
     const node = await this.nodeRepo.findOne({ where: { id } });
     if (!node) throw new NotFoundException('Node not found');
+
+    const beforeData = { id: node.id, type: node.type, code: node.code, title: node.title, description: node.description, parent_id: node.parent_id, order: node.order };
 
     const newType = dto.type ?? node.type;
     const newParentId =
@@ -146,6 +161,18 @@ export class LogframeService {
       where: { logframe_level_id: saved.id },
     });
 
+    const afterData = { id: saved.id, type: saved.type, code: saved.code, title: saved.title, description: saved.description, parent_id: saved.parent_id, order: saved.order };
+
+    void this.auditService.log({
+      user_id: actorId,
+      user_name: actorName,
+      action: 'update',
+      resource: 'logframe_node',
+      resource_id: saved.id,
+      before_data: beforeData,
+      after_data: afterData,
+    });
+
     return {
       ...saved,
       indicators: indicators.map((i) => this.serializeIndicator(i)),
@@ -153,7 +180,7 @@ export class LogframeService {
     };
   }
 
-  async deleteNode(id: string) {
+  async deleteNode(id: string, actorId: string, actorName: string) {
     const node = await this.nodeRepo.findOne({ where: { id } });
     if (!node) throw new NotFoundException('Node not found');
 
@@ -166,10 +193,21 @@ export class LogframeService {
       );
     }
 
+    const beforeData = { id: node.id, type: node.type, code: node.code, title: node.title, description: node.description, parent_id: node.parent_id, order: node.order };
+
     await this.nodeRepo.remove(node);
+
+    void this.auditService.log({
+      user_id: actorId,
+      user_name: actorName,
+      action: 'delete',
+      resource: 'logframe_node',
+      resource_id: id,
+      before_data: beforeData,
+    });
   }
 
-  async linkIndicator(nodeId: string, indicatorId: string) {
+  async linkIndicator(nodeId: string, indicatorId: string, actorId: string, actorName: string) {
     const node = await this.nodeRepo.findOne({ where: { id: nodeId } });
     if (!node) throw new NotFoundException('Node not found');
 
@@ -184,10 +222,20 @@ export class LogframeService {
 
     indicator.logframe_level_id = nodeId;
     await this.indicatorRepo.save(indicator);
+
+    void this.auditService.log({
+      user_id: actorId,
+      user_name: actorName,
+      action: 'update',
+      resource: 'indicator',
+      resource_id: indicatorId,
+      after_data: { logframe_level_id: nodeId },
+    });
+
     return { success: true };
   }
 
-  async unlinkIndicator(nodeId: string, indicatorId: string) {
+  async unlinkIndicator(nodeId: string, indicatorId: string, actorId: string, actorName: string) {
     const indicator = await this.indicatorRepo.findOne({
       where: { id: indicatorId, logframe_level_id: nodeId },
     });
@@ -195,6 +243,15 @@ export class LogframeService {
 
     indicator.logframe_level_id = null;
     await this.indicatorRepo.save(indicator);
+
+    void this.auditService.log({
+      user_id: actorId,
+      user_name: actorName,
+      action: 'update',
+      resource: 'indicator',
+      resource_id: indicatorId,
+      after_data: { logframe_level_id: null },
+    });
   }
 
   private async validateParentConstraint(

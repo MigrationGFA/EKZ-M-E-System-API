@@ -5,6 +5,7 @@ import {
   Delete,
   Body,
   Param,
+  Request,
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
@@ -49,8 +50,8 @@ export class ApiTokensController {
     status: 201,
     description: 'Token object including rawToken (one-time only)',
   })
-  create(@Body() dto: CreateTokenDto) {
-    return this.apiTokensService.create(dto.name);
+  create(@Body() dto: CreateTokenDto, @Request() req: any) {
+    return this.apiTokensService.create(dto.name, req.user.id as string, req.user.email as string);
   }
 
   @Delete(':id')
@@ -58,7 +59,7 @@ export class ApiTokensController {
   @ApiParam({ name: 'id', description: 'Token UUID' })
   @ApiResponse({ status: 200, description: '{ success: true }' })
   @ApiResponse({ status: 404, description: 'Token not found' })
-  remove(@Param('id') id: string) {
-    return this.apiTokensService.remove(id);
+  remove(@Param('id') id: string, @Request() req: any) {
+    return this.apiTokensService.remove(id, req.user.id as string, req.user.email as string);
   }
 }

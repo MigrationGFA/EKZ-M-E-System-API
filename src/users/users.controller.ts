@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Body, Param, Query, Request } from '@nestjs/common';
+import { Controller, Get, Post, Put, Body, Param, Query, Request, NotFoundException } from '@nestjs/common';
 import {
   ApiTags,
   ApiOperation,
@@ -60,6 +60,17 @@ export class UsersController {
       page: page ? Number(page) : undefined,
       per_page: per_page ? Number(per_page) : undefined,
     });
+  }
+
+  @Get(':id')
+  @ApiOperation({ summary: 'Get a single user by ID (admin only)' })
+  @ApiParam({ name: 'id', description: 'User UUID' })
+  @ApiResponse({ status: 200, description: 'User object' })
+  @ApiResponse({ status: 404, description: 'User not found' })
+  async findOne(@Param('id') id: string) {
+    const user = await this.usersService.findById(id);
+    if (!user) throw new NotFoundException('User not found');
+    return this.usersService.serializeUser(user);
   }
 
   @Post('invite')

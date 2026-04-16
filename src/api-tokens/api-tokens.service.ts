@@ -6,6 +6,7 @@ import * as bcrypt from 'bcrypt';
 import { ApiToken } from './api-token.entity.js';
 import { UsersService } from '../users/users.service.js';
 import { MailService } from '../mail/mail.service.js';
+import { AuditService } from '../audit/audit.service.js';
 
 @Injectable()
 export class ApiTokensService {
@@ -14,6 +15,7 @@ export class ApiTokensService {
     private readonly tokenRepo: Repository<ApiToken>,
     private readonly usersService: UsersService,
     private readonly mailService: MailService,
+    private readonly auditService: AuditService,
   ) {}
 
   async findAll() {
@@ -28,7 +30,7 @@ export class ApiTokensService {
     }));
   }
 
-  async create(name: string) {
+  async create(name: string, actorId: string, actorName: string) {
     const rawToken = 'ekz_LIVE_' + randomBytes(16).toString('hex');
     const tokenPrefix =
       rawToken.substring(0, 14) + '****...' + rawToken.slice(-3);
@@ -40,6 +42,15 @@ export class ApiTokensService {
       token_prefix: tokenPrefix,
     });
     const saved = await this.tokenRepo.save(token);
+
+    void this.auditService.log({
+      user_id: actorId,
+      user_name: actorName,
+      action: 'create',
+      resource: 'api_token',
+      resource_id: saved.id,
+      after_data: { name, tokenPrefix },
+    });
 
     void this.notifyAdmins((emails) =>
       this.mailService.sendTokenCreated(emails, name, saved.token_prefix),
@@ -54,10 +65,19 @@ export class ApiTokensService {
     };
   }
 
-  async remove(id: string) {
+  async remove(id: string, actorId: string, actorName: string) {
     const token = await this.tokenRepo.findOne({ where: { id } });
     if (!token) throw new NotFoundException('Token not found');
     await this.tokenRepo.remove(token);
+
+    void this.auditService.log({
+      user_id: actorId,
+      user_name: actorName,
+      action: 'delete',
+      resource: 'api_token',
+      resource_id: id,
+      before_data: { name: token.name },
+    });
 
     void this.notifyAdmins((emails) =>
       this.mailService.sendTokenRevoked(emails, token.name),

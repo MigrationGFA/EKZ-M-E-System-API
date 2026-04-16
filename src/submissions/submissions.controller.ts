@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Body, Param, Query } from '@nestjs/common';
+import { Controller, Get, Post, Put, Body, Param, Query, Request, UseGuards } from '@nestjs/common';
 import {
   ApiTags,
   ApiOperation,
@@ -13,6 +13,7 @@ import { CreateSubmissionDto } from './dto/create-submission.dto.js';
 import { ValidateSubmissionDto } from './dto/validate-submission.dto.js';
 import { Roles } from '../auth/roles.decorator.js';
 import { UserRole } from '../common/enums/user-role.enum.js';
+import { JwtOrApiTokenGuard } from '../auth/jwt-or-api-token.guard.js';
 
 @ApiTags('Submissions')
 @ApiBearerAuth('JWT')
@@ -52,8 +53,19 @@ export class SubmissionsController {
     });
   }
 
+  @Get(':id')
+  @Roles(UserRole.ADMIN, UserRole.ME_STAFF, UserRole.PROGRAMME_STAFF)
+  @ApiOperation({ summary: 'Get a single submission by ID' })
+  @ApiParam({ name: 'id', description: 'Submission UUID' })
+  @ApiResponse({ status: 200, description: 'Submission object' })
+  @ApiResponse({ status: 404, description: 'Submission not found' })
+  findOne(@Param('id') id: string) {
+    return this.submissionsService.findOne(id);
+  }
+
   // IMPORTANT: batch route BEFORE single POST to avoid :id matching
   @Post('batch')
+  @UseGuards(JwtOrApiTokenGuard)
   @Roles(UserRole.ADMIN, UserRole.ME_STAFF, UserRole.PROGRAMME_STAFF)
   @ApiOperation({
     summary: 'Batch submit multiple submissions',
@@ -65,11 +77,12 @@ export class SubmissionsController {
     status: 200,
     description: '{ accepted: string[], rejected: { id, reason }[] }',
   })
-  createBatch(@Body() dtos: CreateSubmissionDto[]) {
-    return this.submissionsService.createBatch(dtos);
+  createBatch(@Body() dtos: CreateSubmissionDto[], @Request() req: any) {
+    return this.submissionsService.createBatch(dtos, req.user.id as string, req.user.email as string);
   }
 
   @Post()
+  @UseGuards(JwtOrApiTokenGuard)
   @Roles(UserRole.ADMIN, UserRole.ME_STAFF, UserRole.PROGRAMME_STAFF)
   @ApiOperation({
     summary: 'Submit a single submission',
@@ -81,8 +94,8 @@ export class SubmissionsController {
     status: 409,
     description: 'Submission with this ID already exists',
   })
-  create(@Body() dto: CreateSubmissionDto) {
-    return this.submissionsService.create(dto);
+  create(@Body() dto: CreateSubmissionDto, @Request() req: any) {
+    return this.submissionsService.create(dto, req.user.id as string, req.user.email as string);
   }
 
   @Put(':id/validate')
@@ -91,7 +104,7 @@ export class SubmissionsController {
   @ApiParam({ name: 'id', description: 'Submission UUID' })
   @ApiResponse({ status: 200, description: 'Full updated submission object' })
   @ApiResponse({ status: 404, description: 'Submission not found' })
-  validate(@Param('id') id: string, @Body() dto: ValidateSubmissionDto) {
-    return this.submissionsService.validate(id, dto.action, dto.comment);
+  validate(@Param('id') id: string, @Body() dto: ValidateSubmissionDto, @Request() req: any) {
+    return this.submissionsService.validate(id, dto.action, dto.comment, req.user.id as string, req.user.email as string);
   }
 }

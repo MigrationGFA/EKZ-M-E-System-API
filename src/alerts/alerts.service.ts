@@ -30,13 +30,22 @@ export class AlertsService {
     if (filters.type) {
       qb.andWhere('a.type = :type', { type: filters.type });
     }
+
+    const total = await qb.getCount();
+
     if (filters.page && filters.per_page) {
       qb.skip((filters.page - 1) * filters.per_page).take(filters.per_page);
     }
 
     qb.orderBy('a.created_at', 'DESC');
     const alerts = await qb.getMany();
-    return alerts.map((a) => this.serialize(a));
+
+    return {
+      data: alerts.map((a) => this.serialize(a)),
+      total,
+      page: filters.page ?? 1,
+      per_page: filters.per_page ?? total,
+    };
   }
 
   async create(dto: {

@@ -7,6 +7,7 @@ import {
   Body,
   Param,
   Query,
+  Request,
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
@@ -59,8 +60,11 @@ export class FormsController {
   @Roles(UserRole.ADMIN, UserRole.ME_STAFF)
   @ApiOperation({ summary: 'Create a new form' })
   @ApiResponse({ status: 201, description: 'Created form' })
-  create(@Body() dto: CreateFormDto) {
-    return this.formsService.create(dto);
+  create(@Body() dto: CreateFormDto, @Request() req: any) {
+    return this.formsService.create({
+      ...dto,
+      created_by: req.user.id as string,
+    }, req.user.id as string, req.user.email as string);
   }
 
   @Put(':id')
@@ -69,8 +73,8 @@ export class FormsController {
   @ApiParam({ name: 'id', description: 'Form UUID' })
   @ApiResponse({ status: 200, description: 'Updated form' })
   @ApiResponse({ status: 404, description: 'Form not found' })
-  update(@Param('id') id: string, @Body() dto: UpdateFormDto) {
-    return this.formsService.update(id, dto);
+  update(@Param('id') id: string, @Body() dto: UpdateFormDto, @Request() req: any) {
+    return this.formsService.update(id, dto, req.user.id as string, req.user.email as string);
   }
 
   @Delete(':id')
@@ -79,7 +83,7 @@ export class FormsController {
   @ApiOperation({ summary: 'Delete a form' })
   @ApiParam({ name: 'id', description: 'Form UUID' })
   @ApiResponse({ status: 204, description: 'Deleted' })
-  remove(@Param('id') id: string) {
-    return this.formsService.remove(id);
+  remove(@Param('id') id: string, @Request() req: any) {
+    return this.formsService.remove(id, req.user.id as string, req.user.email as string);
   }
 }

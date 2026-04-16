@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
 import { ProjectLocation } from './project-location.entity.js';
@@ -7,6 +7,7 @@ import { Submission } from '../submissions/submission.entity.js';
 import { Form } from '../forms/form.entity.js';
 import { CreateLocationDto } from './dto/create-location.dto.js';
 import { UpdateLocationDto } from './dto/update-location.dto.js';
+import { AuditService } from '../audit/audit.service.js';
 
 @Injectable()
 export class LocationsService {
@@ -19,6 +20,7 @@ export class LocationsService {
     private readonly subRepo: Repository<Submission>,
     @InjectRepository(Form)
     private readonly formRepo: Repository<Form>,
+    private readonly auditService: AuditService,
   ) {}
 
   async findAll(filters: { sector?: string; status?: string }) {
@@ -108,7 +110,7 @@ export class LocationsService {
     };
   }
 
-  async create(dto: CreateLocationDto) {
+  async create(dto: CreateLocationDto, actorId?: string, actorName?: string) {
     const loc = this.locRepo.create({
       name: dto.name,
       sector: dto.sector,
@@ -124,7 +126,7 @@ export class LocationsService {
     const indicators = await this.getLinkedIndicators(saved.indicator_ids);
     const { completion, status } = this.computeLocationStatus(indicators);
 
-    return {
+    const result = {
       id: saved.id,
       name: saved.name,
       sector: saved.sector,
@@ -139,11 +141,43 @@ export class LocationsService {
       createdAt: saved.created_at,
       updatedAt: saved.updated_at,
     };
+
+    if (actorId && actorName) {
+      void this.auditService.log({
+        user_id: actorId,
+        user_name: actorName,
+        action: 'create',
+        resource: 'location',
+        resource_id: saved.id,
+        after_data: result,
+      });
+    }
+
+    return result;
   }
 
-  async update(id: string, dto: UpdateLocationDto) {
+  async update(id: string, dto: UpdateLocationDto, actorId?: string, actorName?: string) {
     const loc = await this.locRepo.findOne({ where: { id } });
     if (!loc) throw new NotFoundException('Location not found');
+
+    // Capture before state
+    const beforeIndicators = await this.getLinkedIndicators(loc.indicator_ids);
+    const beforeComputed = this.computeLocationStatus(beforeIndicators);
+    const beforeData = {
+      id: loc.id,
+      name: loc.name,
+      sector: loc.sector,
+      description: loc.description,
+      lat: loc.lat,
+      lng: loc.lng,
+      radius_m: loc.radius_m,
+      status: beforeComputed.status,
+      completion: Math.round(beforeComputed.completion),
+      indicator_ids: loc.indicator_ids,
+      created_by: loc.created_by,
+      createdAt: loc.created_at,
+      updatedAt: loc.updated_at,
+    };
 
     const updates = Object.fromEntries(
       Object.entries(dto).filter(([, v]) => v !== undefined),
@@ -154,7 +188,7 @@ export class LocationsService {
     const indicators = await this.getLinkedIndicators(saved.indicator_ids);
     const { completion, status } = this.computeLocationStatus(indicators);
 
-    return {
+    const afterData = {
       id: saved.id,
       name: saved.name,
       sector: saved.sector,
@@ -169,12 +203,57 @@ export class LocationsService {
       createdAt: saved.created_at,
       updatedAt: saved.updated_at,
     };
+
+    if (actorId && actorName) {
+      void this.auditService.log({
+        user_id: actorId,
+        user_name: actorName,
+        action: 'update',
+        resource: 'location',
+        resource_id: saved.id,
+        before_data: beforeData,
+        after_data: afterData,
+      });
+    }
+
+    return afterData;
   }
 
-  async remove(id: string) {
+  async remove(id: string, actorId?: string, actorName?: string) {
     const loc = await this.locRepo.findOne({ where: { id } });
     if (!loc) throw new NotFoundException('Location not found');
+
+    const submissionCount = await this.subRepo.count({ where: { location_id: id } });
+    if (submissionCount > 0) {
+      throw new ConflictException(
+        `Cannot delete location referenced by ${submissionCount} submission(s).`,
+      );
+    }
+
+    const beforeData = {
+      id: loc.id,
+      name: loc.name,
+      sector: loc.sector,
+      description: loc.description,
+      lat: loc.lat,
+      lng: loc.lng,
+      radius_m: loc.radius_m,
+      indicator_ids: loc.indicator_ids,
+      created_by: loc.created_by,
+    };
+
     await this.locRepo.remove(loc);
+
+    if (actorId && actorName) {
+      void this.auditService.log({
+        user_id: actorId,
+        user_name: actorName,
+        action: 'delete',
+        resource: 'location',
+        resource_id: id,
+        before_data: beforeData,
+      });
+    }
   }
 
   async getIndicatorLocations(indicatorId: string) {
@@ -201,7 +280,7 @@ export class LocationsService {
           id: s.id,
           form_id: s.form_id,
           officer_id: s.officer_id,
-          submitted_at: s.submitted_at,
+          submittedAt: s.submitted_at,
           on_site: s.on_site,
         },
         geometry: {

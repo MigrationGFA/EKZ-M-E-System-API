@@ -74,6 +74,9 @@ export class UsersService {
         search: `%${filters.search}%`,
       });
     }
+
+    const total = await qb.getCount();
+
     if (filters.page && filters.per_page) {
       qb.skip((filters.page - 1) * filters.per_page).take(filters.per_page);
     }
@@ -93,7 +96,7 @@ export class UsersService {
       countMap.set(row.officer_id, row.count);
     }
 
-    return users.map((u) => ({
+    const data = users.map((u) => ({
       id: u.id,
       email: u.email,
       name: u.name,
@@ -101,9 +104,17 @@ export class UsersService {
       avatar: u.avatar,
       active: u.active,
       is_default_password: u.is_default_password,
-      last_login: u.last_login,
+      lastLogin: u.last_login,
+      createdAt: u.created_at,
       submission_count: countMap.get(u.id) ?? 0,
     }));
+
+    return {
+      data,
+      total,
+      page: filters.page ?? 1,
+      per_page: filters.per_page ?? total,
+    };
   }
 
   async invite(name: string, email: string, role: string) {
@@ -209,7 +220,8 @@ export class UsersService {
       avatar: u.avatar,
       active: u.active,
       is_default_password: u.is_default_password,
-      last_login: u.last_login,
+      lastLogin: u.last_login,
+      createdAt: u.created_at,
     };
   }
 }
