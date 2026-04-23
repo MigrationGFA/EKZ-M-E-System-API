@@ -10,14 +10,14 @@ import * as dotenv from 'dotenv';
 
 dotenv.config();
 
-const TO = 'fafyocutru@necub.com';
+const TO = 'fofama9304@soppat.com';
 
 const SMTP = {
-  host: process.env.SMTP_HOST ?? 'mail.smtp2go.com',
+  host: process.env.SMTP_HOST ?? 'mail.mandefied.com',
   port: Number(process.env.SMTP_PORT ?? 587),
-  user: process.env.SMTP_USER ?? 'dimpified',
+  user: process.env.SMTP_USER ?? 'hello@mandefied.com',
   pass: process.env.SMTP_PASS ?? 'KDZuLRJrvoASS800',
-  from: process.env.SMTP_FROM ?? 'hello@dimpified.com',
+  from: process.env.SMTP_FROM ?? 'hello@mandefied.com',
 };
 
 const transporter = nodemailer.createTransport({
@@ -25,6 +25,7 @@ const transporter = nodemailer.createTransport({
   port: SMTP.port,
   secure: false,
   auth: { user: SMTP.user, pass: SMTP.pass },
+  tls: { rejectUnauthorized: false },
 });
 
 // ── HTML wrapper ────────────────────────────────────────────────────────────

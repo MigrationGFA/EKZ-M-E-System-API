@@ -2,14 +2,89 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Report } from './report.entity.js';
+import { Indicator } from '../indicators/indicator.entity.js';
+import { IndicatorProgress } from '../indicators/indicator-progress.entity.js';
+import { Submission } from '../submissions/submission.entity.js';
+import { LogframeNode } from '../logframe/logframe-node.entity.js';
 import { MailService } from '../mail/mail.service.js';
 import { AuditService } from '../audit/audit.service.js';
+
+interface SubCounts {
+  total: number;
+  approved: number;
+  rejected: number;
+  pending: number;
+}
+
+interface IndicatorReportRow {
+  id: string;
+  code: string;
+  name: string;
+  unit: string;
+  baseline: number;
+  target: number;
+  current_value: number;
+  progress_pct: number;
+  status: string;
+  responsible_party: string;
+  means_of_verification: string;
+  frequency: string;
+  trend: { date: string; value: number }[];
+  submissions: SubCounts;
+}
+
+interface LogframeReportRow {
+  depth: number;
+  type: string;
+  code: string;
+  title: string;
+  indicators: IndicatorReportRow[];
+}
+
+export interface ReportPreviewData {
+  meta: {
+    generated_at: string;
+    generated_by: string;
+    date_from: string | null;
+    date_to: string | null;
+  };
+  executive_summary: {
+    total_indicators: number;
+    on_track: number;
+    at_risk: number;
+    off_track: number;
+    on_track_pct: number;
+    total_submissions: number;
+    approved_submissions: number;
+    pending_submissions: number;
+    rejected_submissions: number;
+    off_site_submissions: number;
+    data_verified_pct: number;
+  };
+  logframe_rows: LogframeReportRow[];
+  data_quality: {
+    total_submissions: number;
+    approved_count: number;
+    rejected_count: number;
+    pending_count: number;
+    off_site_count: number;
+    verified_pct: number;
+  };
+}
 
 @Injectable()
 export class ReportsService {
   constructor(
     @InjectRepository(Report)
     private readonly reportRepo: Repository<Report>,
+    @InjectRepository(Indicator)
+    private readonly indicatorRepo: Repository<Indicator>,
+    @InjectRepository(IndicatorProgress)
+    private readonly progressRepo: Repository<IndicatorProgress>,
+    @InjectRepository(Submission)
+    private readonly subRepo: Repository<Submission>,
+    @InjectRepository(LogframeNode)
+    private readonly nodeRepo: Repository<LogframeNode>,
     private readonly mailService: MailService,
     private readonly auditService: AuditService,
   ) {}
@@ -68,5 +143,283 @@ export class ReportsService {
       download_url: saved.download_url,
       format: saved.format,
     };
+  }
+
+  async getPreviewData(
+    generatedBy: string,
+    dateFrom?: string,
+    dateTo?: string,
+  ): Promise<ReportPreviewData> {
+    const [indicators, nodes] = await Promise.all([
+      this.indicatorRepo.find(),
+      this.nodeRepo.find({ order: { order: 'ASC' } }),
+    ]);
+
+    const progressByIndicator = await this.loadProgressMap(dateFrom, dateTo);
+    const subsByIndicator = await this.loadSubsByIndicatorMap(dateFrom, dateTo);
+    const globalStats = await this.loadGlobalSubStats(dateFrom, dateTo);
+
+    const { totalSubs, approvedSubs, rejectedSubs, pendingSubs, offSiteSubs } =
+      globalStats;
+    const verifiedPct =
+      totalSubs > 0 ? Math.round((approvedSubs / totalSubs) * 100) : 0;
+
+    let onTrack = 0;
+    let atRisk = 0;
+    let offTrack = 0;
+    for (const ind of indicators) {
+      if (ind.status === 'on_track') onTrack++;
+      else if (ind.status === 'at_risk') atRisk++;
+      else offTrack++;
+    }
+
+    const logframe_rows = this.buildLogframeRows(
+      nodes,
+      indicators,
+      progressByIndicator,
+      subsByIndicator,
+    );
+
+    return {
+      meta: {
+        generated_at: new Date().toISOString(),
+        generated_by: generatedBy,
+        date_from: dateFrom ?? null,
+        date_to: dateTo ?? null,
+      },
+      executive_summary: {
+        total_indicators: indicators.length,
+        on_track: onTrack,
+        at_risk: atRisk,
+        off_track: offTrack,
+        on_track_pct:
+          indicators.length > 0
+            ? Math.round((onTrack / indicators.length) * 100)
+            : 0,
+        total_submissions: totalSubs,
+        approved_submissions: approvedSubs,
+        pending_submissions: pendingSubs,
+        rejected_submissions: rejectedSubs,
+        off_site_submissions: offSiteSubs,
+        data_verified_pct: verifiedPct,
+      },
+      logframe_rows,
+      data_quality: {
+        total_submissions: totalSubs,
+        approved_count: approvedSubs,
+        rejected_count: rejectedSubs,
+        pending_count: pendingSubs,
+        off_site_count: offSiteSubs,
+        verified_pct: verifiedPct,
+      },
+    };
+  }
+
+  // ─── Private helpers ───────────────────────────────────────────────────────
+
+  private async loadProgressMap(
+    dateFrom?: string,
+    dateTo?: string,
+  ): Promise<Map<string, { date: string; value: number }[]>> {
+    const qb = this.progressRepo
+      .createQueryBuilder('p')
+      .orderBy('p.date', 'ASC');
+    if (dateFrom) qb.andWhere('p.date >= :dateFrom', { dateFrom });
+    if (dateTo) qb.andWhere('p.date <= :dateTo', { dateTo });
+    const rows = await qb.getMany();
+
+    const map = new Map<string, { date: string; value: number }[]>();
+    for (const p of rows) {
+      if (!map.has(p.indicator_id)) map.set(p.indicator_id, []);
+      map
+        .get(p.indicator_id)!
+        .push({ date: p.date.toISOString(), value: Number(p.value) });
+    }
+    return map;
+  }
+
+  private async loadSubsByIndicatorMap(
+    dateFrom?: string,
+    dateTo?: string,
+  ): Promise<Map<string, SubCounts>> {
+    type Row = {
+      indicator_id: string;
+      validation_status: string;
+      count: string;
+    };
+    const rows: Row[] = await this.indicatorRepo.manager.query(
+      `SELECT
+         unnest(f.indicator_ids::uuid[]) AS indicator_id,
+         s.validation_status,
+         COUNT(*)::int AS count
+       FROM submissions s
+       INNER JOIN forms f ON f.id = s.form_id
+       WHERE ($1::timestamptz IS NULL OR s.submitted_at >= $1)
+         AND ($2::timestamptz IS NULL OR s.submitted_at <= $2)
+       GROUP BY unnest(f.indicator_ids::uuid[]), s.validation_status`,
+      [dateFrom ?? null, dateTo ?? null],
+    );
+
+    const map = new Map<string, SubCounts>();
+    for (const row of rows) {
+      if (!map.has(row.indicator_id)) {
+        map.set(row.indicator_id, {
+          total: 0,
+          approved: 0,
+          rejected: 0,
+          pending: 0,
+        });
+      }
+      const entry = map.get(row.indicator_id)!;
+      const count = Number(row.count);
+      entry.total += count;
+      if (row.validation_status === 'approved') entry.approved += count;
+      else if (row.validation_status === 'rejected') entry.rejected += count;
+      else entry.pending += count;
+    }
+    return map;
+  }
+
+  private async loadGlobalSubStats(dateFrom?: string, dateTo?: string) {
+    type Row = {
+      total: string;
+      approved: string;
+      rejected: string;
+      pending: string;
+      off_site: string;
+    };
+    const [row]: Row[] = await this.indicatorRepo.manager.query(
+      `SELECT
+         COUNT(*)::int                                              AS total,
+         COUNT(*) FILTER (WHERE validation_status = 'approved')::int AS approved,
+         COUNT(*) FILTER (WHERE validation_status = 'rejected')::int AS rejected,
+         COUNT(*) FILTER (WHERE validation_status = 'pending')::int  AS pending,
+         COUNT(*) FILTER (WHERE on_site = false)::int               AS off_site
+       FROM submissions
+       WHERE ($1::timestamptz IS NULL OR submitted_at >= $1)
+         AND ($2::timestamptz IS NULL OR submitted_at <= $2)`,
+      [dateFrom ?? null, dateTo ?? null],
+    );
+    return {
+      totalSubs: Number(row.total),
+      approvedSubs: Number(row.approved),
+      rejectedSubs: Number(row.rejected),
+      pendingSubs: Number(row.pending),
+      offSiteSubs: Number(row.off_site),
+    };
+  }
+
+  private toIndicatorRow(
+    ind: Indicator,
+    progressByIndicator: Map<string, { date: string; value: number }[]>,
+    subsByIndicator: Map<string, SubCounts>,
+  ): IndicatorReportRow {
+    const target = Number(ind.target);
+    const current = Number(ind.current_value);
+    return {
+      id: ind.id,
+      code: ind.code,
+      name: ind.name,
+      unit: ind.unit,
+      baseline: Number(ind.baseline),
+      target,
+      current_value: current,
+      progress_pct: target > 0 ? Math.round((current / target) * 100) : 0,
+      status: ind.status,
+      responsible_party: ind.responsible_party,
+      means_of_verification: ind.means_of_verification,
+      frequency: ind.frequency,
+      trend: progressByIndicator.get(ind.id) ?? [],
+      submissions: subsByIndicator.get(ind.id) ?? {
+        total: 0,
+        approved: 0,
+        rejected: 0,
+        pending: 0,
+      },
+    };
+  }
+
+  private buildLogframeRows(
+    nodes: LogframeNode[],
+    indicators: Indicator[],
+    progressByIndicator: Map<string, { date: string; value: number }[]>,
+    subsByIndicator: Map<string, SubCounts>,
+  ): LogframeReportRow[] {
+    const { byNode, unassigned } = this.groupIndicatorsByNode(indicators);
+    const { childrenMap, roots } = this.buildChildrenMap(nodes);
+    const toRow = (ind: Indicator) =>
+      this.toIndicatorRow(ind, progressByIndicator, subsByIndicator);
+
+    const rows: LogframeReportRow[] = [];
+    // Iterative DFS — avoids recursive closure which inflates cognitive complexity
+    const stack = roots
+      .toSorted((a, b) => a.order - b.order)
+      .map((n) => ({ node: n, depth: 0 }))
+      .reverse();
+
+    while (stack.length > 0) {
+      const { node, depth } = stack.pop()!;
+      rows.push({
+        depth,
+        type: node.type,
+        code: node.code,
+        title: node.title,
+        indicators: (byNode.get(node.id) ?? []).map(toRow),
+      });
+      const children = (childrenMap.get(node.id) ?? []).sort(
+        (a, b) => a.order - b.order,
+      );
+      for (let i = children.length - 1; i >= 0; i--) {
+        stack.push({ node: children[i], depth: depth + 1 });
+      }
+    }
+
+    if (unassigned.length > 0) {
+      rows.push({
+        depth: 0,
+        type: 'unassigned',
+        code: '—',
+        title: 'Unassigned Indicators',
+        indicators: unassigned.map(toRow),
+      });
+    }
+
+    return rows;
+  }
+
+  private groupIndicatorsByNode(indicators: Indicator[]): {
+    byNode: Map<string, Indicator[]>;
+    unassigned: Indicator[];
+  } {
+    const byNode = new Map<string, Indicator[]>();
+    const unassigned: Indicator[] = [];
+    for (const ind of indicators) {
+      if (ind.logframe_level_id) {
+        if (!byNode.has(ind.logframe_level_id))
+          byNode.set(ind.logframe_level_id, []);
+        byNode.get(ind.logframe_level_id)!.push(ind);
+      } else {
+        unassigned.push(ind);
+      }
+    }
+    return { byNode, unassigned };
+  }
+
+  private buildChildrenMap(nodes: LogframeNode[]): {
+    childrenMap: Map<string, LogframeNode[]>;
+    roots: LogframeNode[];
+  } {
+    const childrenMap = new Map<string, LogframeNode[]>();
+    const roots: LogframeNode[] = [];
+    for (const node of nodes) {
+      if (node.parent_id) {
+        if (!childrenMap.has(node.parent_id))
+          childrenMap.set(node.parent_id, []);
+        childrenMap.get(node.parent_id)!.push(node);
+      } else {
+        roots.push(node);
+      }
+    }
+    return { childrenMap, roots };
   }
 }
