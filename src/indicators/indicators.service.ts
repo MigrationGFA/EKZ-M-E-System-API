@@ -117,7 +117,12 @@ export class IndicatorsService {
     return result;
   }
 
-  async update(id: string, dto: UpdateIndicatorDto, actorId: string, actorName: string) {
+  async update(
+    id: string,
+    dto: UpdateIndicatorDto,
+    actorId: string,
+    actorName: string,
+  ) {
     const indicator = await this.indicatorRepo.findOne({ where: { id } });
     if (!indicator) throw new NotFoundException('Indicator not found');
 
@@ -250,7 +255,12 @@ export class IndicatorsService {
     }));
   }
 
-  async addProgress(indicatorId: string, dto: CreateProgressDto, actorId: string, actorName: string) {
+  async addProgress(
+    indicatorId: string,
+    dto: CreateProgressDto,
+    actorId: string,
+    actorName: string,
+  ) {
     const indicator = await this.indicatorRepo.findOne({
       where: { id: indicatorId },
     });

@@ -7,7 +7,11 @@ import { IndicatorsModule } from '../indicators/indicators.module.js';
 import { AuditModule } from '../audit/audit.module.js';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([LogframeNode]), IndicatorsModule, AuditModule],
+  imports: [
+    TypeOrmModule.forFeature([LogframeNode]),
+    IndicatorsModule,
+    AuditModule,
+  ],
   controllers: [LogframeController],
   providers: [LogframeService],
   exports: [LogframeService],

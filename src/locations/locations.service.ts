@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ConflictException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
 import { ProjectLocation } from './project-location.entity.js';
@@ -156,7 +160,12 @@ export class LocationsService {
     return result;
   }
 
-  async update(id: string, dto: UpdateLocationDto, actorId?: string, actorName?: string) {
+  async update(
+    id: string,
+    dto: UpdateLocationDto,
+    actorId?: string,
+    actorName?: string,
+  ) {
     const loc = await this.locRepo.findOne({ where: { id } });
     if (!loc) throw new NotFoundException('Location not found');
 
@@ -223,7 +232,9 @@ export class LocationsService {
     const loc = await this.locRepo.findOne({ where: { id } });
     if (!loc) throw new NotFoundException('Location not found');
 
-    const submissionCount = await this.subRepo.count({ where: { location_id: id } });
+    const submissionCount = await this.subRepo.count({
+      where: { location_id: id },
+    });
     if (submissionCount > 0) {
       throw new ConflictException(
         `Cannot delete location referenced by ${submissionCount} submission(s).`,

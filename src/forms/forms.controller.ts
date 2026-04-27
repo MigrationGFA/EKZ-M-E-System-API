@@ -61,10 +61,14 @@ export class FormsController {
   @ApiOperation({ summary: 'Create a new form' })
   @ApiResponse({ status: 201, description: 'Created form' })
   create(@Body() dto: CreateFormDto, @Request() req: any) {
-    return this.formsService.create({
-      ...dto,
-      created_by: req.user.id as string,
-    }, req.user.id as string, req.user.email as string);
+    return this.formsService.create(
+      {
+        ...dto,
+        created_by: req.user.id as string,
+      },
+      req.user.id as string,
+      req.user.email as string,
+    );
   }
 
   @Put(':id')
@@ -73,8 +77,17 @@ export class FormsController {
   @ApiParam({ name: 'id', description: 'Form UUID' })
   @ApiResponse({ status: 200, description: 'Updated form' })
   @ApiResponse({ status: 404, description: 'Form not found' })
-  update(@Param('id') id: string, @Body() dto: UpdateFormDto, @Request() req: any) {
-    return this.formsService.update(id, dto, req.user.id as string, req.user.email as string);
+  update(
+    @Param('id') id: string,
+    @Body() dto: UpdateFormDto,
+    @Request() req: any,
+  ) {
+    return this.formsService.update(
+      id,
+      dto,
+      req.user.id as string,
+      req.user.email as string,
+    );
   }
 
   @Delete(':id')
@@ -84,6 +97,10 @@ export class FormsController {
   @ApiParam({ name: 'id', description: 'Form UUID' })
   @ApiResponse({ status: 204, description: 'Deleted' })
   remove(@Param('id') id: string, @Request() req: any) {
-    return this.formsService.remove(id, req.user.id as string, req.user.email as string);
+    return this.formsService.remove(
+      id,
+      req.user.id as string,
+      req.user.email as string,
+    );
   }
 }

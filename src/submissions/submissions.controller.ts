@@ -1,4 +1,14 @@
-import { Controller, Get, Post, Put, Body, Param, Query, Request, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Put,
+  Body,
+  Param,
+  Query,
+  Request,
+  UseGuards,
+} from '@nestjs/common';
 import {
   ApiTags,
   ApiOperation,
@@ -78,7 +88,11 @@ export class SubmissionsController {
     description: '{ accepted: string[], rejected: { id, reason }[] }',
   })
   createBatch(@Body() dtos: CreateSubmissionDto[], @Request() req: any) {
-    return this.submissionsService.createBatch(dtos, req.user.id as string, req.user.email as string);
+    return this.submissionsService.createBatch(
+      dtos,
+      req.user.id as string,
+      req.user.email as string,
+    );
   }
 
   @Post()
@@ -95,7 +109,11 @@ export class SubmissionsController {
     description: 'Submission with this ID already exists',
   })
   create(@Body() dto: CreateSubmissionDto, @Request() req: any) {
-    return this.submissionsService.create(dto, req.user.id as string, req.user.email as string);
+    return this.submissionsService.create(
+      dto,
+      req.user.id as string,
+      req.user.email as string,
+    );
   }
 
   @Put(':id/validate')
@@ -104,7 +122,17 @@ export class SubmissionsController {
   @ApiParam({ name: 'id', description: 'Submission UUID' })
   @ApiResponse({ status: 200, description: 'Full updated submission object' })
   @ApiResponse({ status: 404, description: 'Submission not found' })
-  validate(@Param('id') id: string, @Body() dto: ValidateSubmissionDto, @Request() req: any) {
-    return this.submissionsService.validate(id, dto.action, dto.comment, req.user.id as string, req.user.email as string);
+  validate(
+    @Param('id') id: string,
+    @Body() dto: ValidateSubmissionDto,
+    @Request() req: any,
+  ) {
+    return this.submissionsService.validate(
+      id,
+      dto.action,
+      dto.comment,
+      req.user.id as string,
+      req.user.email as string,
+    );
   }
 }

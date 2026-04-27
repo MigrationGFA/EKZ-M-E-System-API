@@ -1,8 +1,6 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class UserDefaultPasswordFlag1700000000005
-  implements MigrationInterface
-{
+export class UserDefaultPasswordFlag1700000000005 implements MigrationInterface {
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`
       ALTER TABLE users
