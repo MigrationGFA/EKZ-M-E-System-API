@@ -14,6 +14,7 @@ import { UsersService } from '../users/users.service.js';
 import { MailService } from '../mail/mail.service.js';
 import { AuditService } from '../audit/audit.service.js';
 import { AlertsService } from '../alerts/alerts.service.js';
+import { IndicatorsService } from '../indicators/indicators.service.js';
 
 // ─── Minimal stub factory ────────────────────────────────────────────────────
 
@@ -63,6 +64,11 @@ const mockLocRepo = () => ({
 const mockFormRepo = () => ({
   existsBy: jest.fn(),
   find: jest.fn(),
+  findOne: jest.fn().mockResolvedValue({ id: 'form-1', title: 'Test Form', field_mappings: [] }),
+});
+
+const mockIndicatorsService = () => ({
+  addProgress: jest.fn().mockResolvedValue(undefined),
 });
 
 const mockUsersService = () => ({
@@ -106,6 +112,7 @@ describe('SubmissionsService', () => {
         { provide: MailService, useFactory: mockMailService },
         { provide: AuditService, useFactory: mockAuditService },
         { provide: AlertsService, useFactory: mockAlertsService },
+        { provide: IndicatorsService, useFactory: mockIndicatorsService },
       ],
     }).compile();
 
@@ -301,13 +308,16 @@ describe('SubmissionsService', () => {
         makeSubmission({ validation_status: 'approved' }),
       );
       await expect(
-        service.validate(
-          'sub-1',
-          'reject',
-          undefined,
-          'actor-id',
-          'actor@test.com',
-        ),
+        service.validate('sub-1', 'reject', undefined, 'actor-id', 'actor@test.com'),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('throws BadRequestException when submission is already rejected', async () => {
+      subRepo.findOne.mockResolvedValue(
+        makeSubmission({ validation_status: 'rejected' }),
+      );
+      await expect(
+        service.validate('sub-1', 'approve', undefined, 'actor-id', 'actor@test.com'),
       ).rejects.toBeInstanceOf(BadRequestException);
     });
 
