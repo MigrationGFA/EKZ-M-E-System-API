@@ -14,7 +14,12 @@ import { UserRole } from '../common/enums/user-role.enum.js';
 @ApiTags('Alerts')
 @ApiBearerAuth('JWT')
 @Controller('alerts')
-@Roles(UserRole.ADMIN, UserRole.ME_STAFF, UserRole.PROGRAMME_STAFF, UserRole.VIEWER)
+@Roles(
+  UserRole.ADMIN,
+  UserRole.ME_STAFF,
+  UserRole.PROGRAMME_STAFF,
+  UserRole.VIEWER,
+)
 export class AlertsController {
   constructor(private readonly alertsService: AlertsService) {}
 

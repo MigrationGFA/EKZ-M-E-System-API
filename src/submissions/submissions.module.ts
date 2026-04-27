@@ -8,6 +8,7 @@ import { SubmissionsController } from './submissions.controller.js';
 import { UsersModule } from '../users/users.module.js';
 import { AuditModule } from '../audit/audit.module.js';
 import { AlertsModule } from '../alerts/alerts.module.js';
+import { IndicatorsModule } from '../indicators/indicators.module.js';
 
 @Module({
   imports: [
@@ -15,6 +16,7 @@ import { AlertsModule } from '../alerts/alerts.module.js';
     UsersModule,
     AuditModule,
     AlertsModule,
+    IndicatorsModule,
   ],
   controllers: [SubmissionsController],
   providers: [SubmissionsService],

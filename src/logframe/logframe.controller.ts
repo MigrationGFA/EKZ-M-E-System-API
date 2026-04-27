@@ -47,7 +47,11 @@ export class LogframeController {
   @ApiResponse({ status: 201, description: 'Node created successfully' })
   @ApiResponse({ status: 400, description: 'Parent type constraint violation' })
   createNode(@Body() dto: CreateNodeDto, @Request() req: any) {
-    return this.logframeService.createNode(dto, req.user.id as string, req.user.email as string);
+    return this.logframeService.createNode(
+      dto,
+      req.user.id as string,
+      req.user.email as string,
+    );
   }
 
   @Put('nodes/:id')
@@ -56,8 +60,17 @@ export class LogframeController {
   @ApiParam({ name: 'id', description: 'Node UUID' })
   @ApiResponse({ status: 200, description: 'Updated node' })
   @ApiResponse({ status: 404, description: 'Node not found' })
-  updateNode(@Param('id') id: string, @Body() dto: UpdateNodeDto, @Request() req: any) {
-    return this.logframeService.updateNode(id, dto, req.user.id as string, req.user.email as string);
+  updateNode(
+    @Param('id') id: string,
+    @Body() dto: UpdateNodeDto,
+    @Request() req: any,
+  ) {
+    return this.logframeService.updateNode(
+      id,
+      dto,
+      req.user.id as string,
+      req.user.email as string,
+    );
   }
 
   @Delete('nodes/:id')
@@ -71,7 +84,11 @@ export class LogframeController {
     description: 'Node has children — remove them first',
   })
   deleteNode(@Param('id') id: string, @Request() req: any) {
-    return this.logframeService.deleteNode(id, req.user.id as string, req.user.email as string);
+    return this.logframeService.deleteNode(
+      id,
+      req.user.id as string,
+      req.user.email as string,
+    );
   }
 
   @Post('nodes/:id/indicators')
@@ -83,8 +100,17 @@ export class LogframeController {
     status: 409,
     description: 'Indicator already linked to this node',
   })
-  linkIndicator(@Param('id') id: string, @Body() dto: LinkIndicatorDto, @Request() req: any) {
-    return this.logframeService.linkIndicator(id, dto.indicator_id, req.user.id as string, req.user.email as string);
+  linkIndicator(
+    @Param('id') id: string,
+    @Body() dto: LinkIndicatorDto,
+    @Request() req: any,
+  ) {
+    return this.logframeService.linkIndicator(
+      id,
+      dto.indicator_id,
+      req.user.id as string,
+      req.user.email as string,
+    );
   }
 
   @Delete('nodes/:nodeId/indicators/:indicatorId')
@@ -99,6 +125,11 @@ export class LogframeController {
     @Param('indicatorId') indicatorId: string,
     @Request() req: any,
   ) {
-    return this.logframeService.unlinkIndicator(nodeId, indicatorId, req.user.id as string, req.user.email as string);
+    return this.logframeService.unlinkIndicator(
+      nodeId,
+      indicatorId,
+      req.user.id as string,
+      req.user.email as string,
+    );
   }
 }

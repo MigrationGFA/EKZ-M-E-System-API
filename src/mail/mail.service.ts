@@ -99,6 +99,30 @@ export class MailService {
     );
   }
 
+  sendForgotPasswordLink(to: string, name: string, resetLink: string): void {
+    void this.send(
+      to,
+      'Reset Your EKZ M&E Password',
+      this.wrapHtml(
+        'Reset Your Password',
+        `<p>Hi ${name},</p>
+         <p>We received a request to reset the password for your EKZ M&amp;E System account.</p>
+         <p>Click the button below to set a new password. This link expires in <strong>1 hour</strong>.</p>
+         <p style="text-align:center;margin:28px 0;">
+           <a href="${resetLink}"
+              style="background-color:#1a56db;color:#ffffff;padding:13px 28px;border-radius:6px;text-decoration:none;font-weight:600;font-size:15px;display:inline-block;">
+             Reset Password
+           </a>
+         </p>
+         <p style="font-size:13px;color:#6b7280;">Or paste this link into your browser:</p>
+         <p style="word-break:break-all;font-size:13px;color:#1a56db;">${resetLink}</p>
+         <p style="margin-top:24px;font-size:13px;color:#6b7280;">
+           If you did not request a password reset, you can safely ignore this email — your password will not change.
+         </p>`,
+      ),
+    );
+  }
+
   sendPasswordChanged(to: string, name: string): void {
     void this.send(
       to,
@@ -116,14 +140,42 @@ export class MailService {
     to: string,
     officerName: string,
     submissionId: string,
+    formTitle: string,
+    approvedByName: string,
+    approvedAt: Date,
   ): void {
+    const dateStr = approvedAt.toLocaleDateString('en-GB', {
+      day: 'numeric', month: 'long', year: 'numeric',
+    });
     void this.send(
       to,
-      'Submission Approved',
+      `Submission Approved — ${formTitle}`,
       this.wrapHtml(
-        'Submission Approved',
+        'Submission Approved ✓',
         `<p>Hi ${officerName},</p>
-         <p>Your submission <strong>${submissionId}</strong> has been approved.</p>`,
+         <p>Your submission has been <strong style="color:#057a55;">approved</strong>.</p>
+         <table style="width:100%;border-collapse:collapse;margin:16px 0;font-size:14px;">
+           <tr style="background:#f9fafb;">
+             <td style="padding:8px 12px;color:#6b7280;width:40%;">Form</td>
+             <td style="padding:8px 12px;font-weight:600;">${formTitle}</td>
+           </tr>
+           <tr>
+             <td style="padding:8px 12px;color:#6b7280;">Submission ID</td>
+             <td style="padding:8px 12px;font-family:monospace;font-size:12px;">${submissionId}</td>
+           </tr>
+           <tr style="background:#f9fafb;">
+             <td style="padding:8px 12px;color:#6b7280;">Approved by</td>
+             <td style="padding:8px 12px;">${approvedByName}</td>
+           </tr>
+           <tr>
+             <td style="padding:8px 12px;color:#6b7280;">Date</td>
+             <td style="padding:8px 12px;">${dateStr}</td>
+           </tr>
+         </table>
+         <p style="font-size:13px;color:#6b7280;">
+           The data from this submission has been recorded in the M&amp;E system.
+           No further action is required on your part.
+         </p>`,
       ),
     );
   }
@@ -132,17 +184,51 @@ export class MailService {
     to: string,
     officerName: string,
     submissionId: string,
-    comment: string,
+    formTitle: string,
+    reason: string,
+    rejectedByName: string,
+    rejectedAt: Date,
   ): void {
+    const dateStr = rejectedAt.toLocaleDateString('en-GB', {
+      day: 'numeric', month: 'long', year: 'numeric',
+    });
     void this.send(
       to,
-      'Submission Rejected',
+      `Action Required: Submission Rejected — ${formTitle}`,
       this.wrapHtml(
         'Submission Rejected',
         `<p>Hi ${officerName},</p>
-         <p>Your submission <strong>${submissionId}</strong> has been rejected.</p>
-         <p><strong>Reason:</strong> ${comment}</p>
-         <p>Please review and resubmit if necessary.</p>`,
+         <p>Your submission has been <strong style="color:#e02424;">rejected</strong>
+            and this record is now closed.</p>
+         <table style="width:100%;border-collapse:collapse;margin:16px 0;font-size:14px;">
+           <tr style="background:#f9fafb;">
+             <td style="padding:8px 12px;color:#6b7280;width:40%;">Form</td>
+             <td style="padding:8px 12px;font-weight:600;">${formTitle}</td>
+           </tr>
+           <tr>
+             <td style="padding:8px 12px;color:#6b7280;">Submission ID</td>
+             <td style="padding:8px 12px;font-family:monospace;font-size:12px;">${submissionId}</td>
+           </tr>
+           <tr style="background:#f9fafb;">
+             <td style="padding:8px 12px;color:#6b7280;">Rejected by</td>
+             <td style="padding:8px 12px;">${rejectedByName}</td>
+           </tr>
+           <tr>
+             <td style="padding:8px 12px;color:#6b7280;">Date</td>
+             <td style="padding:8px 12px;">${dateStr}</td>
+           </tr>
+         </table>
+         <div style="background:#fef2f2;border-left:4px solid #e02424;padding:14px 16px;margin:20px 0;border-radius:0 4px 4px 0;">
+           <p style="margin:0 0 4px;font-weight:600;color:#c81e1e;font-size:13px;">Reason for rejection</p>
+           <p style="margin:0;color:#1a1a2e;font-size:14px;">${reason}</p>
+         </div>
+         <p style="font-size:14px;">
+           If the data needs to be re-collected, please complete a new form entry from the field
+           and submit it through the EKZ M&amp;E app. Do <strong>not</strong> resubmit this same record.
+         </p>
+         <p style="font-size:13px;color:#6b7280;margin-top:16px;">
+           If you believe this rejection is in error, please contact your M&amp;E supervisor directly.
+         </p>`,
       ),
     );
   }

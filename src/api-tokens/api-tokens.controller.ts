@@ -51,7 +51,11 @@ export class ApiTokensController {
     description: 'Token object including rawToken (one-time only)',
   })
   create(@Body() dto: CreateTokenDto, @Request() req: any) {
-    return this.apiTokensService.create(dto.name, req.user.id as string, req.user.email as string);
+    return this.apiTokensService.create(
+      dto.name,
+      req.user.id as string,
+      req.user.email as string,
+    );
   }
 
   @Delete(':id')
@@ -60,6 +64,10 @@ export class ApiTokensController {
   @ApiResponse({ status: 200, description: '{ success: true }' })
   @ApiResponse({ status: 404, description: 'Token not found' })
   remove(@Param('id') id: string, @Request() req: any) {
-    return this.apiTokensService.remove(id, req.user.id as string, req.user.email as string);
+    return this.apiTokensService.remove(
+      id,
+      req.user.id as string,
+      req.user.email as string,
+    );
   }
 }

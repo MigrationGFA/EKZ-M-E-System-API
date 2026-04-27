@@ -17,6 +17,8 @@ import { AuthService } from './auth.service.js';
 import { UsersService } from '../users/users.service.js';
 import { LoginDto } from './dto/login.dto.js';
 import { ChangePasswordDto } from './dto/change-password.dto.js';
+import { ForgotPasswordDto } from './dto/forgot-password.dto.js';
+import { ResetPasswordDto } from './dto/reset-password.dto.js';
 import { Public } from './public.decorator.js';
 
 @ApiTags('Auth')
@@ -69,6 +71,33 @@ export class AuthController {
     };
   }
 
+  @Public()
+  @Post('forgot-password')
+  @Throttle({ default: { ttl: 60000, limit: 3 } })
+  @ApiOperation({ summary: 'Request a password reset link via email' })
+  @ApiResponse({
+    status: 201,
+    description: 'Always returns success to prevent user enumeration',
+  })
+  @ApiResponse({ status: 400, description: 'Validation error' })
+  async forgotPassword(@Body() dto: ForgotPasswordDto) {
+    await this.authService.forgotPassword(dto.email);
+    return {
+      message:
+        'If that email is registered, a password reset link has been sent.',
+    };
+  }
+
+  @Public()
+  @Post('reset-password')
+  @ApiOperation({ summary: 'Reset password using the token from the email link' })
+  @ApiResponse({ status: 201, description: 'Password reset successfully' })
+  @ApiResponse({ status: 400, description: 'Invalid or expired token' })
+  async resetPassword(@Body() dto: ResetPasswordDto) {
+    await this.authService.resetPasswordWithToken(dto.token, dto.new_password);
+    return { message: 'Password has been reset. You can now log in.' };
+  }
+
   @Post('change-password')
   @ApiBearerAuth('JWT')
   @ApiOperation({
@@ -85,10 +114,7 @@ export class AuthController {
     description: 'Current password is incorrect',
   })
   @ApiResponse({ status: 400, description: 'Validation error' })
-  async changePassword(
-    @Request() req: any,
-    @Body() dto: ChangePasswordDto,
-  ) {
+  async changePassword(@Request() req: any, @Body() dto: ChangePasswordDto) {
     return this.authService.changePassword(
       req.user.id,
       dto.current_password,

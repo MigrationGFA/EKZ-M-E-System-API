@@ -1,4 +1,14 @@
-import { Controller, Get, Post, Put, Body, Param, Query, Request, NotFoundException } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Put,
+  Body,
+  Param,
+  Query,
+  Request,
+  NotFoundException,
+} from '@nestjs/common';
 import {
   ApiTags,
   ApiOperation,
@@ -96,8 +106,16 @@ export class UsersController {
   @ApiParam({ name: 'id', description: 'User UUID' })
   @ApiResponse({ status: 200, description: 'Full updated user object' })
   @ApiResponse({ status: 404, description: 'User not found' })
-  async updateRole(@Param('id') id: string, @Body() dto: UpdateRoleDto, @Request() req: { user: { id: string } }) {
-    const result = await this.usersService.updateRole(id, dto.role, req.user.id);
+  async updateRole(
+    @Param('id') id: string,
+    @Body() dto: UpdateRoleDto,
+    @Request() req: { user: { id: string } },
+  ) {
+    const result = await this.usersService.updateRole(
+      id,
+      dto.role,
+      req.user.id,
+    );
 
     await this.auditService.log({
       user_id: id,
@@ -124,7 +142,10 @@ export class UsersController {
     description: 'Full user object with active: false',
   })
   @ApiResponse({ status: 404, description: 'User not found' })
-  async deactivate(@Param('id') id: string, @Request() req: { user: { id: string } }) {
+  async deactivate(
+    @Param('id') id: string,
+    @Request() req: { user: { id: string } },
+  ) {
     const user = await this.usersService.deactivate(id, req.user.id);
 
     await this.auditService.log({

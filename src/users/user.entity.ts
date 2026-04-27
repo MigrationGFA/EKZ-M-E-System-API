@@ -36,6 +36,12 @@ export class User {
   @Column({ type: 'timestamptz', nullable: true })
   last_login: Date | null;
 
+  @Column({ type: 'varchar', length: 64, nullable: true })
+  password_reset_token: string | null;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  password_reset_expires: Date | null;
+
   @CreateDateColumn({ type: 'timestamptz' })
   created_at: Date;
 

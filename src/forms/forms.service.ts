@@ -51,6 +51,7 @@ export class FormsService {
       fields: dto.fields ?? [],
       indicator_ids: dto.indicator_ids ?? [],
       assigned_to: dto.assigned_to ?? [],
+      field_mappings: dto.field_mappings ?? [],
       created_by: dto.created_by,
       status: dto.status ?? 'draft',
     });
@@ -69,7 +70,12 @@ export class FormsService {
     return result;
   }
 
-  async update(id: string, dto: UpdateFormDto, actorId: string, actorName: string) {
+  async update(
+    id: string,
+    dto: UpdateFormDto,
+    actorId: string,
+    actorName: string,
+  ) {
     const form = await this.formRepo.findOne({ where: { id } });
     if (!form) throw new NotFoundException('Form not found');
 
@@ -99,7 +105,9 @@ export class FormsService {
     const form = await this.formRepo.findOne({ where: { id } });
     if (!form) throw new NotFoundException('Form not found');
 
-    const submissionCount = await this.subRepo.count({ where: { form_id: id } });
+    const submissionCount = await this.subRepo.count({
+      where: { form_id: id },
+    });
     if (submissionCount > 0) {
       throw new ConflictException(
         `Cannot delete form with ${submissionCount} existing submission(s). Remove or reassign submissions first.`,
@@ -128,6 +136,7 @@ export class FormsService {
       fields: f.fields,
       indicator_ids: f.indicator_ids,
       assigned_to: f.assigned_to,
+      field_mappings: f.field_mappings ?? [],
       created_by: f.created_by,
       status: f.status,
       createdAt: f.created_at,

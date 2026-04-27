@@ -33,4 +33,15 @@ export class UpdateFormDto {
   @IsOptional()
   @IsIn(['draft', 'published'])
   status?: string;
+
+  @ApiPropertyOptional({
+    description: 'Maps number form fields to specific indicators for auto-progress on approval',
+  })
+  @IsOptional()
+  @IsArray()
+  field_mappings?: Array<{
+    form_field_id: string;
+    indicator_id: string;
+    transform?: 'latest' | 'sum' | 'average';
+  }>;
 }

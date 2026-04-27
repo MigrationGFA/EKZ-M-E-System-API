@@ -133,17 +133,36 @@ export class LogframeService {
       action: 'create',
       resource: 'logframe_node',
       resource_id: saved.id,
-      after_data: { id: saved.id, type: saved.type, code: saved.code, title: saved.title, parent_id: saved.parent_id },
+      after_data: {
+        id: saved.id,
+        type: saved.type,
+        code: saved.code,
+        title: saved.title,
+        parent_id: saved.parent_id,
+      },
     });
 
     return result;
   }
 
-  async updateNode(id: string, dto: UpdateNodeDto, actorId: string, actorName: string) {
+  async updateNode(
+    id: string,
+    dto: UpdateNodeDto,
+    actorId: string,
+    actorName: string,
+  ) {
     const node = await this.nodeRepo.findOne({ where: { id } });
     if (!node) throw new NotFoundException('Node not found');
 
-    const beforeData = { id: node.id, type: node.type, code: node.code, title: node.title, description: node.description, parent_id: node.parent_id, order: node.order };
+    const beforeData = {
+      id: node.id,
+      type: node.type,
+      code: node.code,
+      title: node.title,
+      description: node.description,
+      parent_id: node.parent_id,
+      order: node.order,
+    };
 
     const newType = dto.type ?? node.type;
     const newParentId =
@@ -161,7 +180,15 @@ export class LogframeService {
       where: { logframe_level_id: saved.id },
     });
 
-    const afterData = { id: saved.id, type: saved.type, code: saved.code, title: saved.title, description: saved.description, parent_id: saved.parent_id, order: saved.order };
+    const afterData = {
+      id: saved.id,
+      type: saved.type,
+      code: saved.code,
+      title: saved.title,
+      description: saved.description,
+      parent_id: saved.parent_id,
+      order: saved.order,
+    };
 
     void this.auditService.log({
       user_id: actorId,
@@ -193,7 +220,15 @@ export class LogframeService {
       );
     }
 
-    const beforeData = { id: node.id, type: node.type, code: node.code, title: node.title, description: node.description, parent_id: node.parent_id, order: node.order };
+    const beforeData = {
+      id: node.id,
+      type: node.type,
+      code: node.code,
+      title: node.title,
+      description: node.description,
+      parent_id: node.parent_id,
+      order: node.order,
+    };
 
     await this.nodeRepo.remove(node);
 
@@ -207,7 +242,12 @@ export class LogframeService {
     });
   }
 
-  async linkIndicator(nodeId: string, indicatorId: string, actorId: string, actorName: string) {
+  async linkIndicator(
+    nodeId: string,
+    indicatorId: string,
+    actorId: string,
+    actorName: string,
+  ) {
     const node = await this.nodeRepo.findOne({ where: { id: nodeId } });
     if (!node) throw new NotFoundException('Node not found');
 
@@ -235,7 +275,12 @@ export class LogframeService {
     return { success: true };
   }
 
-  async unlinkIndicator(nodeId: string, indicatorId: string, actorId: string, actorName: string) {
+  async unlinkIndicator(
+    nodeId: string,
+    indicatorId: string,
+    actorId: string,
+    actorName: string,
+  ) {
     const indicator = await this.indicatorRepo.findOne({
       where: { id: indicatorId, logframe_level_id: nodeId },
     });

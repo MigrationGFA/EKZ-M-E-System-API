@@ -9,7 +9,12 @@ import { UsersModule } from '../users/users.module.js';
 import { AuditModule } from '../audit/audit.module.js';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([ApiToken]), UsersModule, AuditModule, PassportModule],
+  imports: [
+    TypeOrmModule.forFeature([ApiToken]),
+    UsersModule,
+    AuditModule,
+    PassportModule,
+  ],
   controllers: [ApiTokensController],
   providers: [ApiTokensService, ApiTokenStrategy],
 })

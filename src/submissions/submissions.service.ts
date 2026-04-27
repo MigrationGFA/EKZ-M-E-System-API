@@ -1,5 +1,6 @@
 import {
   Injectable,
+  Logger,
   NotFoundException,
   ConflictException,
   BadRequestException,
@@ -16,9 +17,12 @@ import { UsersService } from '../users/users.service.js';
 import { MailService } from '../mail/mail.service.js';
 import { AuditService } from '../audit/audit.service.js';
 import { AlertsService } from '../alerts/alerts.service.js';
+import { IndicatorsService } from '../indicators/indicators.service.js';
 
 @Injectable()
 export class SubmissionsService {
+  private readonly logger = new Logger(SubmissionsService.name);
+
   constructor(
     @InjectRepository(Submission)
     private readonly subRepo: Repository<Submission>,
@@ -30,6 +34,7 @@ export class SubmissionsService {
     private readonly mailService: MailService,
     private readonly auditService: AuditService,
     private readonly alertsService: AlertsService,
+    private readonly indicatorsService: IndicatorsService,
   ) {}
 
   async findAll(filters: {
@@ -117,7 +122,11 @@ export class SubmissionsService {
       action: 'submit',
       resource: 'submission',
       resource_id: saved.id,
-      after_data: { formId: dto.formId, officerId: dto.officerId, on_site: geo.on_site },
+      after_data: {
+        formId: dto.formId,
+        officerId: dto.officerId,
+        on_site: geo.on_site,
+      },
     });
 
     // Off-site alert
@@ -140,7 +149,11 @@ export class SubmissionsService {
     return { id: saved.id, status: 'accepted' };
   }
 
-  async createBatch(dtos: CreateSubmissionDto[], actorId: string, actorName: string) {
+  async createBatch(
+    dtos: CreateSubmissionDto[],
+    actorId: string,
+    actorName: string,
+  ) {
     const accepted: string[] = [];
     const rejected: { id: string; reason: string }[] = [];
 
@@ -206,7 +219,11 @@ export class SubmissionsService {
           action: 'submit',
           resource: 'submission',
           resource_id: dto.id,
-          after_data: { formId: dto.formId, officerId: dto.officerId, on_site: geo.on_site },
+          after_data: {
+            formId: dto.formId,
+            officerId: dto.officerId,
+            on_site: geo.on_site,
+          },
         });
 
         // Off-site alert for newly saved submissions
@@ -236,7 +253,9 @@ export class SubmissionsService {
     }
 
     // Send one sync_success alert per unique officer in the accepted list
-    const acceptedDtos = dtos.filter((d) => accepted.includes(d.id) && !existingIds.has(d.id));
+    const acceptedDtos = dtos.filter(
+      (d) => accepted.includes(d.id) && !existingIds.has(d.id),
+    );
     const uniqueOfficerIds = [...new Set(acceptedDtos.map((d) => d.officerId))];
     for (const officerId of uniqueOfficerIds) {
       const off = await this.usersService.findById(officerId);
@@ -254,22 +273,37 @@ export class SubmissionsService {
     return { accepted, rejected };
   }
 
-  async validate(id: string, action: string, comment: string | undefined, actorId: string, actorName: string) {
+  async validate(
+    id: string,
+    action: string,
+    comment: string | undefined,
+    actorId: string,
+    actorName: string,
+  ) {
     const sub = await this.subRepo.findOne({ where: { id } });
     if (!sub) throw new NotFoundException('Submission not found');
 
     const beforeStatus = sub.validation_status;
 
-    // Guard against re-validating an already-approved submission
+    // Both approved and rejected are terminal states — no further action allowed
     if (sub.validation_status === 'approved') {
       throw new BadRequestException(
         'Submission is already approved and cannot be re-validated',
+      );
+    }
+    if (sub.validation_status === 'rejected') {
+      throw new BadRequestException(
+        'Submission is already rejected and cannot be re-validated',
       );
     }
 
     sub.validation_status = action === 'approve' ? 'approved' : 'rejected';
     sub.validation_comment = comment ?? null;
     const saved = await this.subRepo.save(sub);
+
+    if (action === 'approve') {
+      await this.applyFieldMappings(saved, actorId, actorName);
+    }
 
     void this.auditService.log({
       user_id: actorId,
@@ -278,10 +312,21 @@ export class SubmissionsService {
       resource: 'submission',
       resource_id: id,
       before_data: { validation_status: beforeStatus },
-      after_data: { validation_status: saved.validation_status, validation_comment: saved.validation_comment },
+      after_data: {
+        validation_status: saved.validation_status,
+        validation_comment: saved.validation_comment,
+      },
     });
 
-    // Notify the officer
+    // Fetch form title for email — one query, used in both branches
+    const form = await this.formRepo.findOne({
+      where: { id: sub.form_id },
+      select: ['title'],
+    });
+    const formTitle = form?.title ?? sub.form_id;
+    const validatedAt = new Date();
+
+    // Notify the officer — email + in-app alert
     const officer = await this.usersService.findById(sub.officer_id);
     if (officer) {
       if (action === 'approve') {
@@ -289,18 +334,76 @@ export class SubmissionsService {
           officer.email,
           officer.name,
           id,
+          formTitle,
+          actorName,
+          validatedAt,
         );
+        void this.alertsService.create({
+          user_id: officer.id,
+          user_email: officer.email,
+          title: 'Submission Approved',
+          description: `Your submission for "${formTitle}" was approved by ${actorName}. The data has been recorded in the M&E system.`,
+          type: 'submission_approved',
+        });
       } else {
         void this.mailService.sendSubmissionRejected(
           officer.email,
           officer.name,
           id,
+          formTitle,
           comment ?? '',
+          actorName,
+          validatedAt,
         );
+        void this.alertsService.create({
+          user_id: officer.id,
+          user_email: officer.email,
+          title: 'Submission Rejected',
+          description: `Your submission for "${formTitle}" was rejected by ${actorName}. Reason: ${comment ?? ''}`,
+          type: 'submission_rejected',
+        });
       }
     }
 
     return this.serialize(saved);
+  }
+
+  private async applyFieldMappings(
+    sub: Submission,
+    actorId: string,
+    actorName: string,
+  ): Promise<void> {
+    const form = await this.formRepo.findOne({ where: { id: sub.form_id } });
+    if (!form?.field_mappings?.length) return;
+
+    const submittedDate = sub.submitted_at.toISOString().split('T')[0];
+
+    for (const mapping of form.field_mappings) {
+      const rawValue = sub.data[mapping.form_field_id];
+      if (rawValue === undefined || rawValue === null || rawValue === '') continue;
+
+      const numValue =
+        typeof rawValue === 'number' ? rawValue : Number(rawValue);
+      if (Number.isNaN(numValue)) continue;
+
+      try {
+        await this.indicatorsService.addProgress(
+          mapping.indicator_id,
+          {
+            value: numValue,
+            date: submittedDate,
+            submittedBy: actorName,
+            notes: `Auto-linked from submission ${sub.id}`,
+          },
+          actorId,
+          actorName,
+        );
+      } catch (err) {
+        this.logger.warn(
+          `Failed to auto-link progress for indicator ${mapping.indicator_id}: ${(err as Error).message}`,
+        );
+      }
+    }
   }
 
   private async notifyOffSite(

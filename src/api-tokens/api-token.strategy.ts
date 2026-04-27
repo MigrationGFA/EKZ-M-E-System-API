@@ -16,7 +16,9 @@ export class ApiTokenStrategy extends PassportStrategy(Strategy, 'api-token') {
     super();
   }
 
-  async validate(req: Request): Promise<{ id: string; email: string; role: string }> {
+  async validate(
+    req: Request,
+  ): Promise<{ id: string; email: string; role: string }> {
     const authHeader = req.headers['authorization'];
     if (!authHeader || !authHeader.startsWith('Bearer ekz_LIVE_')) {
       throw new UnauthorizedException('Invalid API token');
@@ -28,7 +30,11 @@ export class ApiTokenStrategy extends PassportStrategy(Strategy, 'api-token') {
     for (const stored of allTokens) {
       const match = await bcrypt.compare(rawToken, stored.token_hash);
       if (match) {
-        return { id: stored.id, email: `api-token:${stored.name}`, role: 'api_token' };
+        return {
+          id: stored.id,
+          email: `api-token:${stored.name}`,
+          role: 'api_token',
+        };
       }
     }
 

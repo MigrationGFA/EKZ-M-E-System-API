@@ -86,9 +86,7 @@ export class ApiTokensService {
     return { success: true };
   }
 
-  private async notifyAdmins(
-    send: (emails: string[]) => void,
-  ): Promise<void> {
+  private async notifyAdmins(send: (emails: string[]) => void): Promise<void> {
     const admins = await this.usersService.findAdminAndMeStaff();
     const emails = admins.map((u) => u.email);
     if (emails.length > 0) {

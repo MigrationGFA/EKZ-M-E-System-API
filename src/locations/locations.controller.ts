@@ -68,7 +68,11 @@ export class LocationsController {
   @ApiOperation({ summary: 'Create a new project location' })
   @ApiResponse({ status: 201, description: 'Created location properties' })
   create(@Body() dto: CreateLocationDto, @Request() req: any) {
-    return this.locationsService.create({ ...dto, created_by: req.user.id as string }, req.user.id as string, req.user.email as string);
+    return this.locationsService.create(
+      { ...dto, created_by: req.user.id as string },
+      req.user.id as string,
+      req.user.email as string,
+    );
   }
 
   @Put('projects/:id')
@@ -77,8 +81,17 @@ export class LocationsController {
   @ApiParam({ name: 'id', description: 'Location UUID' })
   @ApiResponse({ status: 200, description: 'Updated location properties' })
   @ApiResponse({ status: 404, description: 'Location not found' })
-  update(@Param('id') id: string, @Body() dto: UpdateLocationDto, @Request() req: any) {
-    return this.locationsService.update(id, dto, req.user.id as string, req.user.email as string);
+  update(
+    @Param('id') id: string,
+    @Body() dto: UpdateLocationDto,
+    @Request() req: any,
+  ) {
+    return this.locationsService.update(
+      id,
+      dto,
+      req.user.id as string,
+      req.user.email as string,
+    );
   }
 
   @Delete('projects/:id')
@@ -88,7 +101,11 @@ export class LocationsController {
   @ApiParam({ name: 'id', description: 'Location UUID' })
   @ApiResponse({ status: 204, description: 'Deleted' })
   remove(@Param('id') id: string, @Request() req: any) {
-    return this.locationsService.remove(id, req.user.id as string, req.user.email as string);
+    return this.locationsService.remove(
+      id,
+      req.user.id as string,
+      req.user.email as string,
+    );
   }
 
   @Get('indicators/:indicatorId')

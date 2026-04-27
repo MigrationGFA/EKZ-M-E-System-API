@@ -139,7 +139,9 @@ export class UsersService {
     return { message: `User ${email} created successfully` };
   }
 
-  async resetPassword(id: string): Promise<{ message: string; userName: string }> {
+  async resetPassword(
+    id: string,
+  ): Promise<{ message: string; userName: string }> {
     const user = await this.usersRepo.findOne({ where: { id } });
     if (!user) throw new NotFoundException('User not found');
 
@@ -148,7 +150,11 @@ export class UsersService {
     user.is_default_password = true;
     await this.usersRepo.save(user);
 
-    void this.mailService.sendPasswordReset(user.email, user.name, DEFAULT_PASSWORD);
+    void this.mailService.sendPasswordReset(
+      user.email,
+      user.name,
+      DEFAULT_PASSWORD,
+    );
 
     return { message: 'Password reset to default', userName: user.name };
   }
@@ -177,7 +183,12 @@ export class UsersService {
     user.role = role as UserRole;
     const saved = await this.usersRepo.save(user);
 
-    void this.mailService.sendRoleChanged(saved.email, saved.name, oldRole, role);
+    void this.mailService.sendRoleChanged(
+      saved.email,
+      saved.name,
+      oldRole,
+      role,
+    );
 
     return {
       user: this.serializeUser(saved),
@@ -199,7 +210,9 @@ export class UsersService {
         active: true,
       });
       if (activeAdminCount <= 1) {
-        throw new BadRequestException('Cannot deactivate the last active admin');
+        throw new BadRequestException(
+          'Cannot deactivate the last active admin',
+        );
       }
     }
 

@@ -97,7 +97,10 @@ describe('SubmissionsService', () => {
       providers: [
         SubmissionsService,
         { provide: getRepositoryToken(Submission), useFactory: mockSubRepo },
-        { provide: getRepositoryToken(ProjectLocation), useFactory: mockLocRepo },
+        {
+          provide: getRepositoryToken(ProjectLocation),
+          useFactory: mockLocRepo,
+        },
         { provide: getRepositoryToken(Form), useFactory: mockFormRepo },
         { provide: UsersService, useFactory: mockUsersService },
         { provide: MailService, useFactory: mockMailService },
@@ -106,9 +109,9 @@ describe('SubmissionsService', () => {
       ],
     }).compile();
 
-    service  = module.get(SubmissionsService);
-    subRepo  = module.get(getRepositoryToken(Submission));
-    locRepo  = module.get(getRepositoryToken(ProjectLocation));
+    service = module.get(SubmissionsService);
+    subRepo = module.get(getRepositoryToken(Submission));
+    locRepo = module.get(getRepositoryToken(ProjectLocation));
     formRepo = module.get(getRepositoryToken(Form));
   });
 
@@ -117,18 +120,18 @@ describe('SubmissionsService', () => {
   describe('create()', () => {
     it('throws UnprocessableEntityException when formId does not exist', async () => {
       formRepo.existsBy.mockResolvedValue(false);
-      await expect(service.create(BASE_DTO, 'actor-id', 'actor@test.com')).rejects.toBeInstanceOf(
-        UnprocessableEntityException,
-      );
+      await expect(
+        service.create(BASE_DTO, 'actor-id', 'actor@test.com'),
+      ).rejects.toBeInstanceOf(UnprocessableEntityException);
     });
 
     it('throws ConflictException when submission id already exists', async () => {
       formRepo.existsBy.mockResolvedValue(true);
       subRepo.findOne.mockResolvedValue(makeSubmission());
 
-      await expect(service.create(BASE_DTO, 'actor-id', 'actor@test.com')).rejects.toBeInstanceOf(
-        ConflictException,
-      );
+      await expect(
+        service.create(BASE_DTO, 'actor-id', 'actor@test.com'),
+      ).rejects.toBeInstanceOf(ConflictException);
     });
 
     it('saves once with geofence applied (no double save)', async () => {
@@ -139,7 +142,11 @@ describe('SubmissionsService', () => {
       subRepo.create.mockReturnValue(created);
       subRepo.save.mockResolvedValue(created);
 
-      const result = await service.create(BASE_DTO, 'actor-id', 'actor@test.com');
+      const result = await service.create(
+        BASE_DTO,
+        'actor-id',
+        'actor@test.com',
+      );
 
       expect(subRepo.save).toHaveBeenCalledTimes(1);
       expect(result).toEqual({ id: 'sub-1', status: 'accepted' });
@@ -153,10 +160,17 @@ describe('SubmissionsService', () => {
       ]);
 
       let capturedEntity: any;
-      subRepo.create.mockImplementation((e: any) => { capturedEntity = e; return e; });
+      subRepo.create.mockImplementation((e: any) => {
+        capturedEntity = e;
+        return e;
+      });
       subRepo.save.mockImplementation(async (e: any) => e);
 
-      await service.create({ ...BASE_DTO, location: { lat: 7.0, lng: 5.0 } }, 'actor-id', 'actor@test.com');
+      await service.create(
+        { ...BASE_DTO, location: { lat: 7.0, lng: 5.0 } },
+        'actor-id',
+        'actor@test.com',
+      );
 
       expect(capturedEntity.on_site).toBe(true);
       expect(capturedEntity.location_id).toBe('loc-1');
@@ -170,10 +184,17 @@ describe('SubmissionsService', () => {
       ]);
 
       let capturedEntity: any;
-      subRepo.create.mockImplementation((e: any) => { capturedEntity = e; return e; });
+      subRepo.create.mockImplementation((e: any) => {
+        capturedEntity = e;
+        return e;
+      });
       subRepo.save.mockImplementation(async (e: any) => e);
 
-      await service.create({ ...BASE_DTO, location: { lat: 7.0, lng: 5.0 } }, 'actor-id', 'actor@test.com');
+      await service.create(
+        { ...BASE_DTO, location: { lat: 7.0, lng: 5.0 } },
+        'actor-id',
+        'actor@test.com',
+      );
 
       expect(capturedEntity.on_site).toBe(false);
       expect(capturedEntity.location_id).toBeNull();
@@ -189,7 +210,11 @@ describe('SubmissionsService', () => {
       subRepo.find.mockResolvedValue([{ id: 'sub-1' }]);
       formRepo.find.mockResolvedValue([{ id: 'form-1' }]);
 
-      const result = await service.createBatch([BASE_DTO], 'actor-id', 'actor@test.com');
+      const result = await service.createBatch(
+        [BASE_DTO],
+        'actor-id',
+        'actor@test.com',
+      );
 
       expect(result.accepted).toContain('sub-1');
       expect(result.rejected).toHaveLength(0);
@@ -201,7 +226,11 @@ describe('SubmissionsService', () => {
       subRepo.find.mockResolvedValue([]);
       formRepo.find.mockResolvedValue([]); // no valid forms
 
-      const result = await service.createBatch([BASE_DTO], 'actor-id', 'actor@test.com');
+      const result = await service.createBatch(
+        [BASE_DTO],
+        'actor-id',
+        'actor@test.com',
+      );
 
       expect(result.rejected[0].id).toBe('sub-1');
       expect(result.rejected[0].reason).toMatch(/form-1 does not exist/i);
@@ -218,7 +247,11 @@ describe('SubmissionsService', () => {
         { ...BASE_DTO, id: 'sub-a' },
         { ...BASE_DTO, id: 'sub-b' },
       ];
-      const result = await service.createBatch(dtos, 'actor-id', 'actor@test.com');
+      const result = await service.createBatch(
+        dtos,
+        'actor-id',
+        'actor@test.com',
+      );
 
       expect(subRepo.save).toHaveBeenCalledTimes(2);
       expect(result.accepted).toEqual(['sub-a', 'sub-b']);
@@ -232,11 +265,15 @@ describe('SubmissionsService', () => {
       subRepo.create.mockImplementation((e: any) => e);
       subRepo.save.mockResolvedValue(makeSubmission());
 
-      await service.createBatch([
-        { ...BASE_DTO, id: 'sub-a' },
-        { ...BASE_DTO, id: 'sub-b' },
-        { ...BASE_DTO, id: 'sub-c' },
-      ], 'actor-id', 'actor@test.com');
+      await service.createBatch(
+        [
+          { ...BASE_DTO, id: 'sub-a' },
+          { ...BASE_DTO, id: 'sub-b' },
+          { ...BASE_DTO, id: 'sub-c' },
+        ],
+        'actor-id',
+        'actor@test.com',
+      );
 
       // subRepo.find called once for bulk dedup, not 3 times
       expect(subRepo.find).toHaveBeenCalledTimes(1);
@@ -248,18 +285,30 @@ describe('SubmissionsService', () => {
   describe('validate()', () => {
     it('throws NotFoundException when submission does not exist', async () => {
       subRepo.findOne.mockResolvedValue(null);
-      await expect(service.validate('missing', 'approve', undefined, 'actor-id', 'actor@test.com')).rejects.toBeInstanceOf(
-        NotFoundException,
-      );
+      await expect(
+        service.validate(
+          'missing',
+          'approve',
+          undefined,
+          'actor-id',
+          'actor@test.com',
+        ),
+      ).rejects.toBeInstanceOf(NotFoundException);
     });
 
     it('throws BadRequestException when submission is already approved', async () => {
       subRepo.findOne.mockResolvedValue(
         makeSubmission({ validation_status: 'approved' }),
       );
-      await expect(service.validate('sub-1', 'reject', undefined, 'actor-id', 'actor@test.com')).rejects.toBeInstanceOf(
-        BadRequestException,
-      );
+      await expect(
+        service.validate(
+          'sub-1',
+          'reject',
+          undefined,
+          'actor-id',
+          'actor@test.com',
+        ),
+      ).rejects.toBeInstanceOf(BadRequestException);
     });
 
     it('approves a pending submission and returns serialized result', async () => {
@@ -267,7 +316,13 @@ describe('SubmissionsService', () => {
       subRepo.findOne.mockResolvedValue(pending);
       subRepo.save.mockImplementation(async (s: any) => s);
 
-      const result = await service.validate('sub-1', 'approve', 'Looks good', 'actor-id', 'actor@test.com');
+      const result = await service.validate(
+        'sub-1',
+        'approve',
+        'Looks good',
+        'actor-id',
+        'actor@test.com',
+      );
 
       expect(result.validation_status).toBe('approved');
       expect(result.validation_comment).toBe('Looks good');
@@ -278,7 +333,13 @@ describe('SubmissionsService', () => {
       subRepo.findOne.mockResolvedValue(pending);
       subRepo.save.mockImplementation(async (s: any) => s);
 
-      const result = await service.validate('sub-1', 'reject', 'Bad data', 'actor-id', 'actor@test.com');
+      const result = await service.validate(
+        'sub-1',
+        'reject',
+        'Bad data',
+        'actor-id',
+        'actor@test.com',
+      );
 
       expect(result.validation_status).toBe('rejected');
     });
