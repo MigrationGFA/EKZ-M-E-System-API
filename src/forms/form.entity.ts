@@ -23,6 +23,13 @@ export class Form {
   @Column({ type: 'jsonb', default: '[]' })
   fields: any[];
 
+  @Column({ type: 'jsonb', default: '[]' })
+  field_mappings: Array<{
+    form_field_id: string;
+    indicator_id: string;
+    transform?: 'latest' | 'sum' | 'average';
+  }>;
+
   @Column({ type: 'uuid', array: true, default: '{}' })
   indicator_ids: string[];
 

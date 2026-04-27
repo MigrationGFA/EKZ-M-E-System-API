@@ -52,10 +52,11 @@ export class SchedulerService {
       const threshold = overdueThresholds[indicator.frequency];
       if (!threshold) continue;
 
-      const lastDate = lastProgressMap.get(indicator.id);
-      const daysSince = lastDate
-        ? Math.floor((now.getTime() - lastDate.getTime()) / 86400000)
-        : Infinity;
+      const lastDate =
+        lastProgressMap.get(indicator.id) ?? new Date(indicator.created_at);
+      const daysSince = Math.floor(
+        (now.getTime() - lastDate.getTime()) / 86400000,
+      );
 
       if (daysSince >= threshold) {
         for (const recipient of recipients) {
@@ -63,7 +64,7 @@ export class SchedulerService {
             user_id: recipient.id,
             user_email: recipient.email,
             title: `Reporting Overdue: ${indicator.code}`,
-            description: `Indicator "${indicator.name}" (${indicator.frequency}) has not been updated in ${daysSince === Infinity ? 'a long time' : `${daysSince} days`}. A progress entry is overdue.`,
+            description: `Indicator "${indicator.name}" (${indicator.frequency}) has not been updated in ${daysSince} days. A progress entry is overdue.`,
             type: 'deadline',
           });
         }
