@@ -1,4 +1,10 @@
-import { IsIn, IsOptional, IsString, MinLength, ValidateIf } from 'class-validator';
+import {
+  IsIn,
+  IsOptional,
+  IsString,
+  MinLength,
+  ValidateIf,
+} from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class ValidateSubmissionDto {
@@ -7,10 +13,12 @@ export class ValidateSubmissionDto {
   action: string;
 
   // Required and must be at least 10 chars when rejecting; optional on approve
-  @ValidateIf(o => o.action === 'reject')
+  @ValidateIf((o) => o.action === 'reject')
   @IsString()
   @MinLength(10, { message: 'Rejection reason must be at least 10 characters' })
-  @ApiPropertyOptional({ example: 'GPS coordinates are outside the project boundary.' })
+  @ApiPropertyOptional({
+    example: 'GPS coordinates are outside the project boundary.',
+  })
   @IsOptional()
   comment?: string;
 }

@@ -18,6 +18,7 @@ import { AuditModule } from './audit/audit.module.js';
 import { ApiTokensModule } from './api-tokens/api-tokens.module.js';
 import { ReportsModule } from './reports/reports.module.js';
 import { SchedulerModule } from './scheduler/scheduler.module.js';
+import { StorageModule } from './storage/storage.module.js';
 
 @Module({
   imports: [
@@ -51,6 +52,7 @@ import { SchedulerModule } from './scheduler/scheduler.module.js';
     ApiTokensModule,
     ReportsModule,
     SchedulerModule,
+    StorageModule,
   ],
 })
 export class AppModule {}

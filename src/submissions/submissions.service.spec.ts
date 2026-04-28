@@ -64,7 +64,13 @@ const mockLocRepo = () => ({
 const mockFormRepo = () => ({
   existsBy: jest.fn(),
   find: jest.fn(),
-  findOne: jest.fn().mockResolvedValue({ id: 'form-1', title: 'Test Form', field_mappings: [] }),
+  findOne: jest.fn().mockResolvedValue({
+    id: 'form-1',
+    title: 'Test Form',
+    field_mappings: [],
+    location_ids: [],
+    require_gps: false,
+  }),
 });
 
 const mockIndicatorsService = () => ({
@@ -126,14 +132,13 @@ describe('SubmissionsService', () => {
 
   describe('create()', () => {
     it('throws UnprocessableEntityException when formId does not exist', async () => {
-      formRepo.existsBy.mockResolvedValue(false);
+      formRepo.findOne.mockResolvedValue(null);
       await expect(
         service.create(BASE_DTO, 'actor-id', 'actor@test.com'),
       ).rejects.toBeInstanceOf(UnprocessableEntityException);
     });
 
     it('throws ConflictException when submission id already exists', async () => {
-      formRepo.existsBy.mockResolvedValue(true);
       subRepo.findOne.mockResolvedValue(makeSubmission());
 
       await expect(
@@ -308,7 +313,13 @@ describe('SubmissionsService', () => {
         makeSubmission({ validation_status: 'approved' }),
       );
       await expect(
-        service.validate('sub-1', 'reject', undefined, 'actor-id', 'actor@test.com'),
+        service.validate(
+          'sub-1',
+          'reject',
+          undefined,
+          'actor-id',
+          'actor@test.com',
+        ),
       ).rejects.toBeInstanceOf(BadRequestException);
     });
 
@@ -317,7 +328,13 @@ describe('SubmissionsService', () => {
         makeSubmission({ validation_status: 'rejected' }),
       );
       await expect(
-        service.validate('sub-1', 'approve', undefined, 'actor-id', 'actor@test.com'),
+        service.validate(
+          'sub-1',
+          'approve',
+          undefined,
+          'actor-id',
+          'actor@test.com',
+        ),
       ).rejects.toBeInstanceOf(BadRequestException);
     });
 

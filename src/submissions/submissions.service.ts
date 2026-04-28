@@ -85,11 +85,15 @@ export class SubmissionsService {
 
   async create(dto: CreateSubmissionDto, actorId: string, actorName: string) {
     // FK validation — give a clean 422 rather than a cryptic DB constraint error
-    const formExists = await this.formRepo.existsBy({ id: dto.formId });
-    if (!formExists) {
+    const form = await this.formRepo.findOne({ where: { id: dto.formId } });
+    if (!form) {
       throw new UnprocessableEntityException(
         `Form ${dto.formId} does not exist`,
       );
+    }
+
+    if (form.require_gps && !dto.location) {
+      throw new BadRequestException('GPS capture is required for this form');
     }
 
     const existing = await this.subRepo.findOne({ where: { id: dto.id } });
@@ -99,9 +103,11 @@ export class SubmissionsService {
       );
     }
 
-    // Compute geofence before the first save to avoid a second round-trip
     const locations = await this.locRepo.find();
-    const geo = applyGeofence(dto.location ?? null, locations);
+    const allowedLocations = form.location_ids?.length
+      ? locations.filter((l) => form.location_ids.includes(l.id))
+      : locations;
+    const geo = applyGeofence(dto.location ?? null, allowedLocations);
 
     const sub = this.subRepo.create({
       id: dto.id,
@@ -172,17 +178,16 @@ export class SubmissionsService {
     });
     const existingIds = new Set(existingRows.map((r) => r.id));
 
-    // Validate all formIds in a single query
+    // Validate all formIds in a single query — fetch full config for geofence + GPS enforcement
     const uniqueFormIds = [...new Set(dtos.map((d) => d.formId))];
     const validForms = await this.formRepo.find({
       where: { id: In(uniqueFormIds) },
-      select: ['id'],
     });
+    const formConfigMap = new Map(validForms.map((f) => [f.id, f]));
     const validFormIds = new Set(validForms.map((f) => f.id));
 
     for (const dto of dtos) {
       try {
-        // Idempotent — silently accept already-persisted submissions
         if (existingIds.has(dto.id)) {
           accepted.push(dto.id);
           continue;
@@ -196,55 +201,20 @@ export class SubmissionsService {
           continue;
         }
 
-        // Compute geofence before save — single save per submission
-        const geo = applyGeofence(dto.location ?? null, locations);
+        const result = await this.processBatchItem(
+          dto,
+          formConfigMap.get(dto.formId)!,
+          locations,
+          adminRecipients,
+          adminEmails,
+          actorId,
+          actorName,
+        );
 
-        const sub = this.subRepo.create({
-          id: dto.id,
-          form_id: dto.formId,
-          officer_id: dto.officerId,
-          data: dto.data,
-          location: dto.location ?? null,
-          submitted_at: new Date(dto.submittedAt),
-          location_id: geo.location_id,
-          on_site: geo.on_site,
-        });
-
-        await this.subRepo.save(sub);
-        accepted.push(dto.id);
-
-        void this.auditService.log({
-          user_id: actorId,
-          user_name: actorName,
-          action: 'submit',
-          resource: 'submission',
-          resource_id: dto.id,
-          after_data: {
-            formId: dto.formId,
-            officerId: dto.officerId,
-            on_site: geo.on_site,
-          },
-        });
-
-        // Off-site alert for newly saved submissions
-        if (geo.on_site === false && adminEmails.length > 0) {
-          const officer = await this.usersService.findById(dto.officerId);
-          void this.mailService.sendOffSiteAlert(
-            adminEmails,
-            dto.id,
-            officer?.name ?? dto.officerId,
-          );
-
-          // In-app alerts for admins/me_staff
-          for (const admin of adminRecipients) {
-            void this.alertsService.create({
-              user_id: admin.id,
-              user_email: admin.email,
-              title: 'Off-Site Submission Detected',
-              description: `Submission ${dto.id} was recorded outside all project geofences. Officer: ${officer?.name ?? dto.officerId}.`,
-              type: 'data_flag',
-            });
-          }
+        if (result.ok) {
+          accepted.push(dto.id);
+        } else {
+          rejected.push({ id: dto.id, reason: result.reason });
         }
       } catch (e: unknown) {
         const message = e instanceof Error ? e.message : 'Unknown error';
@@ -252,11 +222,83 @@ export class SubmissionsService {
       }
     }
 
-    // Send one sync_success alert per unique officer in the accepted list
-    const acceptedDtos = dtos.filter(
+    await this.sendSyncSuccessAlerts(dtos, accepted, existingIds);
+    return { accepted, rejected };
+  }
+
+  private async processBatchItem(
+    dto: CreateSubmissionDto,
+    formConfig: Form,
+    locations: ProjectLocation[],
+    adminRecipients: Array<{ id: string; email: string }>,
+    adminEmails: string[],
+    actorId: string,
+    actorName: string,
+  ): Promise<{ ok: true } | { ok: false; reason: string }> {
+    if (formConfig.require_gps && !dto.location) {
+      return { ok: false, reason: 'GPS capture is required for this form' };
+    }
+
+    const allowedLocations = formConfig.location_ids?.length
+      ? locations.filter((l) => formConfig.location_ids.includes(l.id))
+      : locations;
+    const geo = applyGeofence(dto.location ?? null, allowedLocations);
+
+    const sub = this.subRepo.create({
+      id: dto.id,
+      form_id: dto.formId,
+      officer_id: dto.officerId,
+      data: dto.data,
+      location: dto.location ?? null,
+      submitted_at: new Date(dto.submittedAt),
+      location_id: geo.location_id,
+      on_site: geo.on_site,
+    });
+
+    await this.subRepo.save(sub);
+
+    void this.auditService.log({
+      user_id: actorId,
+      user_name: actorName,
+      action: 'submit',
+      resource: 'submission',
+      resource_id: dto.id,
+      after_data: {
+        formId: dto.formId,
+        officerId: dto.officerId,
+        on_site: geo.on_site,
+      },
+    });
+
+    if (geo.on_site === false && adminEmails.length > 0) {
+      const officer = await this.usersService.findById(dto.officerId);
+      const officerName = officer?.name ?? dto.officerId;
+      this.mailService.sendOffSiteAlert(adminEmails, dto.id, officerName);
+      for (const admin of adminRecipients) {
+        void this.alertsService.create({
+          user_id: admin.id,
+          user_email: admin.email,
+          title: 'Off-Site Submission Detected',
+          description: `Submission ${dto.id} was recorded outside all project geofences. Officer: ${officerName}.`,
+          type: 'data_flag',
+        });
+      }
+    }
+
+    return { ok: true };
+  }
+
+  private async sendSyncSuccessAlerts(
+    dtos: CreateSubmissionDto[],
+    accepted: string[],
+    existingIds: Set<string>,
+  ): Promise<void> {
+    const newlyAccepted = dtos.filter(
       (d) => accepted.includes(d.id) && !existingIds.has(d.id),
     );
-    const uniqueOfficerIds = [...new Set(acceptedDtos.map((d) => d.officerId))];
+    const uniqueOfficerIds = [
+      ...new Set(newlyAccepted.map((d) => d.officerId)),
+    ];
     for (const officerId of uniqueOfficerIds) {
       const off = await this.usersService.findById(officerId);
       if (off) {
@@ -264,13 +306,12 @@ export class SubmissionsService {
           user_id: off.id,
           user_email: off.email,
           title: 'Submissions Synced',
-          description: `Your submissions were received and recorded successfully.`,
+          description:
+            'Your submissions were received and recorded successfully.',
           type: 'sync_success',
         });
       }
     }
-
-    return { accepted, rejected };
   }
 
   async validate(
@@ -379,8 +420,14 @@ export class SubmissionsService {
     const submittedDate = sub.submitted_at.toISOString().split('T')[0];
 
     for (const mapping of form.field_mappings) {
-      const rawValue = sub.data[mapping.form_field_id];
-      if (rawValue === undefined || rawValue === null || rawValue === '') continue;
+      const rawValue = sub.data[mapping.form_field_id] as
+        | string
+        | number
+        | boolean
+        | null
+        | undefined;
+      if (rawValue === undefined || rawValue === null || rawValue === '')
+        continue;
 
       const numValue =
         typeof rawValue === 'number' ? rawValue : Number(rawValue);

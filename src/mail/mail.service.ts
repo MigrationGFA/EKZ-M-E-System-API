@@ -145,7 +145,9 @@ export class MailService {
     approvedAt: Date,
   ): void {
     const dateStr = approvedAt.toLocaleDateString('en-GB', {
-      day: 'numeric', month: 'long', year: 'numeric',
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
     });
     void this.send(
       to,
@@ -190,7 +192,9 @@ export class MailService {
     rejectedAt: Date,
   ): void {
     const dateStr = rejectedAt.toLocaleDateString('en-GB', {
-      day: 'numeric', month: 'long', year: 'numeric',
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
     });
     void this.send(
       to,
