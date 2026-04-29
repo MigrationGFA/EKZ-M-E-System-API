@@ -36,6 +36,12 @@ export class Form {
   @Column({ type: 'uuid', array: true, default: '{}' })
   assigned_to: string[];
 
+  @Column({ type: 'uuid', array: true, default: '{}' })
+  location_ids: string[];
+
+  @Column({ type: 'boolean', default: false })
+  require_gps: boolean;
+
   @Column({ type: 'uuid' })
   created_by: string;
 

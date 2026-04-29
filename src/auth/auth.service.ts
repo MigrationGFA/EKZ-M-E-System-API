@@ -1,4 +1,8 @@
-import { BadRequestException, Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { randomBytes, createHash } from 'node:crypto';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
@@ -112,7 +116,10 @@ export class AuthService {
       where: { password_reset_token: tokenHash },
     });
 
-    if (!user?.password_reset_expires || user.password_reset_expires < new Date()) {
+    if (
+      !user?.password_reset_expires ||
+      user.password_reset_expires < new Date()
+    ) {
       throw new BadRequestException(
         'Password reset link is invalid or has expired',
       );

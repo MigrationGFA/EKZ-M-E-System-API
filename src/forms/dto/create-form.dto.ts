@@ -1,4 +1,11 @@
-import { IsString, IsOptional, IsArray, IsUUID, IsIn } from 'class-validator';
+import {
+  IsString,
+  IsOptional,
+  IsArray,
+  IsUUID,
+  IsIn,
+  IsBoolean,
+} from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateFormDto {
@@ -51,8 +58,11 @@ export class CreateFormDto {
   status?: string;
 
   @ApiPropertyOptional({
-    description: 'Maps number form fields to specific indicators for auto-progress on approval',
-    example: [{ form_field_id: 'f3', indicator_id: 'uuid', transform: 'latest' }],
+    description:
+      'Maps number form fields to specific indicators for auto-progress on approval',
+    example: [
+      { form_field_id: 'f3', indicator_id: 'uuid', transform: 'latest' },
+    ],
   })
   @IsOptional()
   @IsArray()
@@ -61,4 +71,22 @@ export class CreateFormDto {
     indicator_id: string;
     transform?: 'latest' | 'sum' | 'average';
   }>;
+
+  @ApiPropertyOptional({
+    type: [String],
+    description:
+      'Project location UUIDs where this form is valid — empty means all sites',
+  })
+  @IsOptional()
+  @IsArray()
+  @IsUUID('4', { each: true })
+  location_ids?: string[];
+
+  @ApiPropertyOptional({
+    default: false,
+    description: 'Officer must capture GPS before submitting',
+  })
+  @IsOptional()
+  @IsBoolean()
+  require_gps?: boolean;
 }

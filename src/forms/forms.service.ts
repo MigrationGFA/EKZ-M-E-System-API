@@ -52,6 +52,8 @@ export class FormsService {
       indicator_ids: dto.indicator_ids ?? [],
       assigned_to: dto.assigned_to ?? [],
       field_mappings: dto.field_mappings ?? [],
+      location_ids: dto.location_ids ?? [],
+      require_gps: dto.require_gps ?? false,
       created_by: dto.created_by,
       status: dto.status ?? 'draft',
     });
@@ -137,6 +139,8 @@ export class FormsService {
       indicator_ids: f.indicator_ids,
       assigned_to: f.assigned_to,
       field_mappings: f.field_mappings ?? [],
+      location_ids: f.location_ids ?? [],
+      require_gps: f.require_gps ?? false,
       created_by: f.created_by,
       status: f.status,
       createdAt: f.created_at,
