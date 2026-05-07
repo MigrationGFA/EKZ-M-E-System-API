@@ -37,6 +37,9 @@ export class IndicatorsService {
     logframe_level_id?: string;
     sdg_id?: number;
     frequency?: string;
+    kind?: string;
+    rmf_adoa?: boolean;
+    data_source_type?: string;
     search?: string;
     page?: number;
     per_page?: number;
@@ -57,6 +60,17 @@ export class IndicatorsService {
     if (filters.frequency) {
       qb.andWhere('i.frequency = :frequency', {
         frequency: filters.frequency,
+      });
+    }
+    if (filters.kind) {
+      qb.andWhere('i.kind = :kind', { kind: filters.kind });
+    }
+    if (filters.rmf_adoa !== undefined) {
+      qb.andWhere('i.rmf_adoa = :rmf', { rmf: filters.rmf_adoa });
+    }
+    if (filters.data_source_type) {
+      qb.andWhere('i.data_source_type = :dst', {
+        dst: filters.data_source_type,
       });
     }
     if (filters.search) {
@@ -368,6 +382,13 @@ export class IndicatorsService {
       current_value: Number(ind.current_value),
       status: ind.status,
       frequency: ind.frequency,
+      kind: ind.kind,
+      methodology: ind.methodology,
+      rmf_adoa: ind.rmf_adoa,
+      target_mode: ind.target_mode,
+      data_source_type: ind.data_source_type,
+      reporting_year_start: ind.reporting_year_start,
+      reporting_year_end: ind.reporting_year_end,
       logframe_level_id: ind.logframe_level_id,
       sdg_ids: ind.sdg_ids,
       responsible_party: ind.responsible_party,
