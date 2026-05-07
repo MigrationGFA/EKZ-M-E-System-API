@@ -24,6 +24,7 @@ import { IndicatorsService } from './indicators.service.js';
 import { CreateIndicatorDto } from './dto/create-indicator.dto.js';
 import { UpdateIndicatorDto } from './dto/update-indicator.dto.js';
 import { CreateProgressDto } from './dto/create-progress.dto.js';
+import { FindIndicatorsQueryDto } from './dto/find-indicators-query.dto.js';
 import { Roles } from '../auth/roles.decorator.js';
 import { UserRole } from '../common/enums/user-role.enum.js';
 
@@ -39,47 +40,19 @@ export class IndicatorsController {
     description:
       'Returns a plain array. Used for dropdowns and full-list selects.',
   })
-  @ApiQuery({
-    name: 'status',
-    required: false,
-    enum: ['on_track', 'at_risk', 'off_track'],
-  })
-  @ApiQuery({
-    name: 'logframe_level_id',
-    required: false,
-    description: 'Filter by logframe node UUID',
-  })
-  @ApiQuery({ name: 'sdg_id', required: false, type: Number })
-  @ApiQuery({
-    name: 'frequency',
-    required: false,
-    enum: ['monthly', 'quarterly', 'bi_annually', 'annually'],
-  })
-  @ApiQuery({
-    name: 'search',
-    required: false,
-    description: 'Search by name or code (ILIKE)',
-  })
-  @ApiQuery({ name: 'page', required: false, type: Number })
-  @ApiQuery({ name: 'per_page', required: false, type: Number })
   @ApiResponse({ status: 200, description: 'Plain array of indicators' })
-  findAll(
-    @Query('status') status?: string,
-    @Query('logframe_level_id') logframe_level_id?: string,
-    @Query('sdg_id') sdg_id?: string,
-    @Query('frequency') frequency?: string,
-    @Query('search') search?: string,
-    @Query('page') page?: string,
-    @Query('per_page') per_page?: string,
-  ) {
+  findAll(@Query() query: FindIndicatorsQueryDto) {
     return this.indicatorsService.findAll({
-      status,
-      logframe_level_id,
-      sdg_id: sdg_id ? Number(sdg_id) : undefined,
-      frequency,
-      search,
-      page: page ? Number(page) : undefined,
-      per_page: per_page ? Number(per_page) : undefined,
+      status: query.status,
+      logframe_level_id: query.logframe_level_id,
+      sdg_id: query.sdg_id ? Number(query.sdg_id) : undefined,
+      frequency: query.frequency,
+      kind: query.kind,
+      rmf_adoa: query.rmf_adoa,
+      data_source_type: query.data_source_type,
+      search: query.search,
+      page: query.page ? Number(query.page) : undefined,
+      per_page: query.per_page ? Number(query.per_page) : undefined,
     });
   }
 
