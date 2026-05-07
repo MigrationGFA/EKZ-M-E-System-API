@@ -1,3 +1,5 @@
+import { promises as fs } from 'node:fs';
+import * as path from 'node:path';
 import {
   Injectable,
   Logger,
@@ -9,17 +11,21 @@ import { BlobServiceClient, ContainerClient } from '@azure/storage-blob';
 @Injectable()
 export class AzureStorageService {
   private readonly logger = new Logger(AzureStorageService.name);
-  private readonly blobServiceClient: BlobServiceClient;
+  private readonly blobServiceClient: BlobServiceClient | null;
 
   constructor(private readonly config: ConfigService) {
     const connectionString = this.config.get<string>(
       'AZURE_STORAGE_CONNECTION_STRING',
     );
-    if (!connectionString) {
-      throw new Error('AZURE_STORAGE_CONNECTION_STRING is not configured');
+    if (connectionString) {
+      this.blobServiceClient =
+        BlobServiceClient.fromConnectionString(connectionString);
+    } else {
+      this.logger.warn(
+        'AZURE_STORAGE_CONNECTION_STRING is not set — uploads will be saved to local disk',
+      );
+      this.blobServiceClient = null;
     }
-    this.blobServiceClient =
-      BlobServiceClient.fromConnectionString(connectionString);
   }
 
   /**
@@ -37,15 +43,22 @@ export class AzureStorageService {
   ): Promise<string> {
     const { contentType, buffer } = this.decodeDataUrl(dataUrl);
     const extension = this.extensionFromMime(contentType);
-    const blobName = `submissions/${submissionId}/${fieldId}${extension}`;
 
+    if (!this.blobServiceClient) {
+      return this.saveLocally(submissionId, fieldId, extension, buffer);
+    }
+
+    const blobName = `submissions/${submissionId}/${fieldId}${extension}`;
     const containerClient = this.getContainerClient(containerName);
-    const blockBlobClient = containerClient.getBlockBlobClient(blobName);
 
     try {
+      await containerClient.createIfNotExists({ access: 'blob' });
+      const blockBlobClient = containerClient.getBlockBlobClient(blobName);
       await blockBlobClient.uploadData(buffer, {
         blobHTTPHeaders: { blobContentType: contentType },
       });
+      this.logger.log(`Uploaded blob: ${blobName} (${buffer.length} bytes)`);
+      return blockBlobClient.url;
     } catch (err) {
       this.logger.error(
         `Azure upload failed — container: ${containerName}, blob: ${blobName}`,
@@ -53,15 +66,35 @@ export class AzureStorageService {
       );
       throw new InternalServerErrorException('Image upload to storage failed');
     }
-
-    this.logger.log(`Uploaded blob: ${blobName} (${buffer.length} bytes)`);
-    return blockBlobClient.url;
   }
 
   // ── Private helpers ──────────────────────────────────────────────────────────
 
+  private async saveLocally(
+    submissionId: string,
+    fieldId: string,
+    extension: string,
+    buffer: Buffer,
+  ): Promise<string> {
+    const dir = path.resolve(
+      process.cwd(),
+      'uploads',
+      'submissions',
+      submissionId,
+    );
+    await fs.mkdir(dir, { recursive: true });
+    const filename = `${fieldId}${extension}`;
+    await fs.writeFile(path.join(dir, filename), buffer);
+    const base =
+      process.env.APP_URL ?? `http://localhost:${process.env.PORT ?? 3000}`;
+    this.logger.warn(
+      `Azure not configured — saved locally: uploads/submissions/${submissionId}/${filename}`,
+    );
+    return `${base}/uploads/submissions/${submissionId}/${filename}`;
+  }
+
   private getContainerClient(containerName: string): ContainerClient {
-    return this.blobServiceClient.getContainerClient(containerName);
+    return this.blobServiceClient!.getContainerClient(containerName);
   }
 
   private decodeDataUrl(dataUrl: string): {
