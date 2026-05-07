@@ -1,18 +1,26 @@
-import { IsString, IsOptional, IsInt, IsIn, IsUUID } from 'class-validator';
+import {
+  IsString,
+  IsOptional,
+  IsInt,
+  IsIn,
+  IsUUID,
+  IsNumber,
+} from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
+import { NODE_TYPES } from './create-node.dto.js';
 
 export class UpdateNodeDto {
-  @ApiPropertyOptional({ enum: ['goal', 'outcome', 'output', 'activity'] })
+  @ApiPropertyOptional({ enum: NODE_TYPES })
   @IsOptional()
-  @IsIn(['goal', 'outcome', 'output', 'activity'])
+  @IsIn(NODE_TYPES as unknown as string[])
   type?: string;
 
-  @ApiPropertyOptional({ example: 'OP-1.3' })
+  @ApiPropertyOptional({ example: 'OS-1' })
   @IsOptional()
   @IsString()
   code?: string;
 
-  @ApiPropertyOptional({ example: 'TVET infrastructure upgraded' })
+  @ApiPropertyOptional({ example: 'Innovation Park Developed' })
   @IsOptional()
   @IsString()
   title?: string;
@@ -27,8 +35,18 @@ export class UpdateNodeDto {
   @IsUUID()
   parent_id?: string | null;
 
-  @ApiPropertyOptional({ example: 3 })
+  @ApiPropertyOptional({ example: 1 })
   @IsOptional()
   @IsInt()
   order?: number;
+
+  @ApiPropertyOptional({ example: 65000000 })
+  @IsOptional()
+  @IsNumber()
+  budget_usd?: number;
+
+  @ApiPropertyOptional({ example: 'USD' })
+  @IsOptional()
+  @IsString()
+  budget_currency?: string;
 }

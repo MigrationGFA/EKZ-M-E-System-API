@@ -45,6 +45,21 @@ export class LogframeNode {
   @Column({ type: 'int', default: 0 })
   order: number;
 
+  // Component nodes carry a budget envelope (per ADR 0002). NULL on every
+  // other node type.
+  @Column({
+    type: 'numeric',
+    nullable: true,
+    transformer: {
+      to: (v: number | null) => v,
+      from: (v: string | null) => (v === null ? null : Number(v)),
+    },
+  })
+  budget_usd: number | null;
+
+  @Column({ type: 'varchar', length: 10, default: 'USD' })
+  budget_currency: string;
+
   @CreateDateColumn({ type: 'timestamptz' })
   created_at: Date;
 

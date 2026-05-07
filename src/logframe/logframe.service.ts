@@ -12,12 +12,34 @@ import { CreateNodeDto } from './dto/create-node.dto.js';
 import { UpdateNodeDto } from './dto/update-node.dto.js';
 import { AuditService } from '../audit/audit.service.js';
 
-const PARENT_TYPE_MAP: Record<string, string | null> = {
+/**
+ * Parent-type rules (ADR 0002). Multi-parent because a few node types accept
+ * more than one legal parent — outcome, output, and activity straddle the
+ * legacy linear model and the AfDB-aligned hierarchy.
+ *
+ * Legacy types (goal/outcome/output/activity) remain valid for backward
+ * compatibility with existing dev data; they will be removed once Phase 10
+ * seeding completes the migration to AfDB-aligned node types.
+ */
+const PARENT_TYPE_MAP: Record<string, string[] | null> = {
+  // AfDB-aligned types
+  pdo: null,
+  alignment: ['pdo'],
+  component: ['pdo'],
+  outcome_statement: ['pdo'],
+  output_statement: ['component'],
+
+  // Legacy types
   goal: null,
-  outcome: 'goal',
-  output: 'outcome',
-  activity: 'output',
+  outcome: ['goal', 'pdo'],
+  output: ['outcome', 'output_statement'],
+
+  // Leaf — accepts either legacy output or new output_statement
+  activity: ['output', 'output_statement'],
 };
+
+/** Node types that may exist at most once per logframe. */
+const SINGLETON_TYPES = new Set<string>(['pdo']);
 
 export interface SerializedIndicator {
   id: string;
@@ -48,6 +70,8 @@ export interface LogframeTreeNode {
   description: string | null;
   parent_id: string | null;
   order: number;
+  budget_usd: number | null;
+  budget_currency: string;
   indicators: SerializedIndicator[];
   children: LogframeTreeNode[];
 }
@@ -91,6 +115,8 @@ export class LogframeService {
         description: node.description,
         parent_id: node.parent_id,
         order: node.order,
+        budget_usd: node.budget_usd,
+        budget_currency: node.budget_currency,
         indicators: indicatorsByNode.get(node.id) ?? [],
         children: [],
       });
@@ -111,6 +137,10 @@ export class LogframeService {
   async createNode(dto: CreateNodeDto, actorId: string, actorName: string) {
     await this.validateParentConstraint(dto.type, dto.parent_id ?? null);
 
+    if (SINGLETON_TYPES.has(dto.type)) {
+      await this.validateAtMostOneOfType(dto.type);
+    }
+
     const node = this.nodeRepo.create({
       type: dto.type,
       code: dto.code,
@@ -118,6 +148,8 @@ export class LogframeService {
       description: dto.description ?? null,
       parent_id: dto.parent_id ?? null,
       order: dto.order ?? 0,
+      budget_usd: dto.budget_usd ?? null,
+      budget_currency: dto.budget_currency ?? 'USD',
     });
 
     const saved = await this.nodeRepo.save(node);
@@ -139,6 +171,8 @@ export class LogframeService {
         code: saved.code,
         title: saved.title,
         parent_id: saved.parent_id,
+        budget_usd: saved.budget_usd,
+        budget_currency: saved.budget_currency,
       },
     });
 
@@ -162,12 +196,21 @@ export class LogframeService {
       description: node.description,
       parent_id: node.parent_id,
       order: node.order,
+      budget_usd: node.budget_usd,
+      budget_currency: node.budget_currency,
     };
 
     const newType = dto.type ?? node.type;
     const newParentId =
       dto.parent_id !== undefined ? dto.parent_id : node.parent_id;
     await this.validateParentConstraint(newType, newParentId ?? null);
+
+    // Singleton types (e.g. pdo) — only check when the type is actually
+    // changing into a singleton (no-op when updating an existing pdo's
+    // other fields).
+    if (SINGLETON_TYPES.has(newType) && newType !== node.type) {
+      await this.validateAtMostOneOfType(newType, id);
+    }
 
     const updates = Object.fromEntries(
       Object.entries(dto).filter(([, v]) => v !== undefined),
@@ -188,6 +231,8 @@ export class LogframeService {
       description: saved.description,
       parent_id: saved.parent_id,
       order: saved.order,
+      budget_usd: saved.budget_usd,
+      budget_currency: saved.budget_currency,
     };
 
     void this.auditService.log({
@@ -303,9 +348,14 @@ export class LogframeService {
     type: string,
     parentId: string | null,
   ) {
-    const requiredParentType = PARENT_TYPE_MAP[type];
+    const allowedParents = PARENT_TYPE_MAP[type];
 
-    if (requiredParentType === null) {
+    if (allowedParents === undefined) {
+      // Defence in depth — DTOs already constrain `type` via @IsIn.
+      throw new BadRequestException(`Unknown node type "${type}"`);
+    }
+
+    if (allowedParents === null) {
       if (parentId !== null) {
         throw new BadRequestException(
           `A "${type}" node must not have a parent`,
@@ -314,18 +364,40 @@ export class LogframeService {
       return;
     }
 
+    const parentList = allowedParents.map((t) => `"${t}"`).join(' or ');
+
     if (!parentId) {
       throw new BadRequestException(
-        `A "${type}" node requires a parent of type "${requiredParentType}"`,
+        `A "${type}" node requires a parent of type ${parentList}`,
       );
     }
 
     const parent = await this.nodeRepo.findOne({ where: { id: parentId } });
     if (!parent) throw new NotFoundException('Parent node not found');
 
-    if (parent.type !== requiredParentType) {
+    if (!allowedParents.includes(parent.type)) {
       throw new BadRequestException(
-        `A "${type}" node requires a parent of type "${requiredParentType}", but got "${parent.type}"`,
+        `A "${type}" node requires a parent of type ${parentList}, but got "${parent.type}"`,
+      );
+    }
+  }
+
+  /**
+   * Enforces a "at most one node of this type" rule. Used for singleton types
+   * such as `pdo` (ADR 0002). Pass `excludeId` when checking during an update
+   * so the node being updated does not count against itself.
+   */
+  private async validateAtMostOneOfType(type: string, excludeId?: string) {
+    const qb = this.nodeRepo
+      .createQueryBuilder('n')
+      .where('n.type = :type', { type });
+    if (excludeId) {
+      qb.andWhere('n.id != :excludeId', { excludeId });
+    }
+    const count = await qb.getCount();
+    if (count > 0) {
+      throw new ConflictException(
+        `Only one "${type}" node is allowed; another already exists`,
       );
     }
   }

@@ -19,6 +19,7 @@ import { ApiTokensModule } from './api-tokens/api-tokens.module.js';
 import { ReportsModule } from './reports/reports.module.js';
 import { SchedulerModule } from './scheduler/scheduler.module.js';
 import { StorageModule } from './storage/storage.module.js';
+import { ProjectMetaModule } from './project-meta/project-meta.module.js';
 
 @Module({
   imports: [
@@ -53,6 +54,7 @@ import { StorageModule } from './storage/storage.module.js';
     ReportsModule,
     SchedulerModule,
     StorageModule,
+    ProjectMetaModule,
   ],
 })
 export class AppModule {}
