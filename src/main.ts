@@ -55,6 +55,7 @@ async function bootstrap() {
     .addTag('Users', 'User management')
     .addTag('API Tokens', 'API token lifecycle')
     .addTag('Reports', 'Report metadata')
+    .addTag('Project Meta', 'Project-level metadata (PDO, baseline / completion years, midpoint)')
     .build();
 
   const document = SwaggerModule.createDocument(app, config);
