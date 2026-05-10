@@ -25,6 +25,7 @@ import { CreateIndicatorDto } from './dto/create-indicator.dto.js';
 import { UpdateIndicatorDto } from './dto/update-indicator.dto.js';
 import { CreateProgressDto } from './dto/create-progress.dto.js';
 import { FindIndicatorsQueryDto } from './dto/find-indicators-query.dto.js';
+import { SetYearTargetsDto } from './dto/year-target.dto.js';
 import { Roles } from '../auth/roles.decorator.js';
 import { UserRole } from '../common/enums/user-role.enum.js';
 
@@ -158,6 +159,52 @@ export class IndicatorsController {
     @Request() req: any,
   ) {
     return this.indicatorsService.update(
+      id,
+      dto,
+      req.user.id as string,
+      req.user.email as string,
+    );
+  }
+
+  @Get(':id/year-targets')
+  @ApiOperation({
+    summary: 'Get the multi-year targets for an indicator',
+    description:
+      'Returns rows sorted by year ascending. Empty array if none defined.',
+  })
+  @ApiParam({ name: 'id', description: 'Indicator UUID' })
+  @ApiResponse({
+    status: 200,
+    description: 'Array of year-target rows (sorted ascending by year)',
+  })
+  @ApiResponse({ status: 404, description: 'Indicator not found' })
+  getYearTargets(@Param('id', ParseUUIDPipe) id: string) {
+    return this.indicatorsService.getYearTargets(id);
+  }
+
+  @Put(':id/year-targets')
+  @Roles(UserRole.ADMIN, UserRole.ME_STAFF)
+  @ApiOperation({
+    summary: 'Replace the multi-year targets for an indicator',
+    description:
+      'Bulk replace — deletes existing rows and inserts the payload atomically. Recomputes indicator status afterwards.',
+  })
+  @ApiParam({ name: 'id', description: 'Indicator UUID' })
+  @ApiResponse({
+    status: 200,
+    description: 'Persisted year-target rows (sorted ascending by year)',
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Duplicate years in payload',
+  })
+  @ApiResponse({ status: 404, description: 'Indicator not found' })
+  setYearTargets(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: SetYearTargetsDto,
+    @Request() req: any,
+  ) {
+    return this.indicatorsService.setYearTargets(
       id,
       dto,
       req.user.id as string,
