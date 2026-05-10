@@ -1,13 +1,27 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Report } from './report.entity.js';
 import { Indicator } from '../indicators/indicator.entity.js';
 import { IndicatorProgress } from '../indicators/indicator-progress.entity.js';
+import { IndicatorYearTarget } from '../indicators/indicator-year-target.entity.js';
 import { Submission } from '../submissions/submission.entity.js';
 import { LogframeNode } from '../logframe/logframe-node.entity.js';
 import { MailService } from '../mail/mail.service.js';
 import { AuditService } from '../audit/audit.service.js';
+import { ProjectMetaService } from '../project-meta/project-meta.service.js';
+import { expectedAt } from '../indicators/helpers/expected-progress.js';
+
+interface ProjectAnchors {
+  baselineDate?: Date;
+  completionDate?: Date;
+}
+
+interface YearTargetRow {
+  year: number;
+  target_value: number;
+  notes: string | null;
+}
 
 interface SubCounts {
   total: number;
@@ -31,6 +45,9 @@ interface IndicatorReportRow {
   frequency: string;
   trend: { date: string; value: number }[];
   submissions: SubCounts;
+  year_targets: YearTargetRow[];
+  expected_at_now: number;
+  expected_at_completion: number | null;
 }
 
 interface LogframeReportRow {
@@ -81,12 +98,15 @@ export class ReportsService {
     private readonly indicatorRepo: Repository<Indicator>,
     @InjectRepository(IndicatorProgress)
     private readonly progressRepo: Repository<IndicatorProgress>,
+    @InjectRepository(IndicatorYearTarget)
+    private readonly yearTargetsRepo: Repository<IndicatorYearTarget>,
     @InjectRepository(Submission)
     private readonly subRepo: Repository<Submission>,
     @InjectRepository(LogframeNode)
     private readonly nodeRepo: Repository<LogframeNode>,
     private readonly mailService: MailService,
     private readonly auditService: AuditService,
+    private readonly projectMetaService: ProjectMetaService,
   ) {}
 
   async findAll() {
@@ -150,10 +170,13 @@ export class ReportsService {
     dateFrom?: string,
     dateTo?: string,
   ): Promise<ReportPreviewData> {
-    const [indicators, nodes] = await Promise.all([
-      this.indicatorRepo.find(),
-      this.nodeRepo.find({ order: { order: 'ASC' } }),
-    ]);
+    const [indicators, nodes, yearTargetsByIndicator, anchors] =
+      await Promise.all([
+        this.indicatorRepo.find(),
+        this.nodeRepo.find({ order: { order: 'ASC' } }),
+        this.loadYearTargetsMap(),
+        this.resolveProjectAnchors(),
+      ]);
 
     const progressByIndicator = await this.loadProgressMap(dateFrom, dateTo);
     const subsByIndicator = await this.loadSubsByIndicatorMap(dateFrom, dateTo);
@@ -178,6 +201,8 @@ export class ReportsService {
       indicators,
       progressByIndicator,
       subsByIndicator,
+      yearTargetsByIndicator,
+      anchors,
     );
 
     return {
@@ -216,6 +241,35 @@ export class ReportsService {
   }
 
   // ─── Private helpers ───────────────────────────────────────────────────────
+
+  private async loadYearTargetsMap(): Promise<
+    Map<string, IndicatorYearTarget[]>
+  > {
+    const rows = await this.yearTargetsRepo.find({ order: { year: 'ASC' } });
+    const map = new Map<string, IndicatorYearTarget[]>();
+    for (const yt of rows) {
+      if (!map.has(yt.indicator_id)) map.set(yt.indicator_id, []);
+      map.get(yt.indicator_id)!.push(yt);
+    }
+    return map;
+  }
+
+  private async resolveProjectAnchors(): Promise<ProjectAnchors> {
+    try {
+      const meta = await this.projectMetaService.get();
+      return {
+        baselineDate: new Date(Date.UTC(meta.baseline_year, 0, 1)),
+        // End of completion year, 23:59:59.999 UTC. Pre-Phase-3 status math
+        // treats "completion" as Dec 31 of completion_year.
+        completionDate: new Date(
+          Date.UTC(meta.completion_year, 11, 31, 23, 59, 59, 999),
+        ),
+      };
+    } catch (e) {
+      if (!(e instanceof NotFoundException)) throw e;
+      return {};
+    }
+  }
 
   private async loadProgressMap(
     dateFrom?: string,
@@ -313,9 +367,34 @@ export class ReportsService {
     ind: Indicator,
     progressByIndicator: Map<string, { date: string; value: number }[]>,
     subsByIndicator: Map<string, SubCounts>,
+    yearTargetsByIndicator: Map<string, IndicatorYearTarget[]>,
+    anchors: ProjectAnchors,
   ): IndicatorReportRow {
     const target = Number(ind.target);
     const current = Number(ind.current_value);
+    const yts = yearTargetsByIndicator.get(ind.id) ?? [];
+
+    const helperIndicator = {
+      target_mode: ind.target_mode,
+      target,
+      baseline: Number(ind.baseline),
+    };
+    const helperYearTargets = yts.map((y) => ({
+      year: y.year,
+      target_value: Number(y.target_value),
+    }));
+    const expected_at_now = expectedAt(
+      helperIndicator,
+      helperYearTargets,
+      new Date(),
+      { baselineDate: anchors.baselineDate },
+    );
+    const expected_at_completion = anchors.completionDate
+      ? expectedAt(helperIndicator, helperYearTargets, anchors.completionDate, {
+          baselineDate: anchors.baselineDate,
+        })
+      : null;
+
     return {
       id: ind.id,
       code: ind.code,
@@ -336,6 +415,13 @@ export class ReportsService {
         rejected: 0,
         pending: 0,
       },
+      year_targets: yts.map((y) => ({
+        year: y.year,
+        target_value: Number(y.target_value),
+        notes: y.notes,
+      })),
+      expected_at_now,
+      expected_at_completion,
     };
   }
 
@@ -344,11 +430,19 @@ export class ReportsService {
     indicators: Indicator[],
     progressByIndicator: Map<string, { date: string; value: number }[]>,
     subsByIndicator: Map<string, SubCounts>,
+    yearTargetsByIndicator: Map<string, IndicatorYearTarget[]>,
+    anchors: ProjectAnchors,
   ): LogframeReportRow[] {
     const { byNode, unassigned } = this.groupIndicatorsByNode(indicators);
     const { childrenMap, roots } = this.buildChildrenMap(nodes);
     const toRow = (ind: Indicator) =>
-      this.toIndicatorRow(ind, progressByIndicator, subsByIndicator);
+      this.toIndicatorRow(
+        ind,
+        progressByIndicator,
+        subsByIndicator,
+        yearTargetsByIndicator,
+        anchors,
+      );
 
     const rows: LogframeReportRow[] = [];
     // Iterative DFS — avoids recursive closure which inflates cognitive complexity

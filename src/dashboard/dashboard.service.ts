@@ -1,11 +1,14 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Indicator } from '../indicators/indicator.entity.js';
 import { IndicatorProgress } from '../indicators/indicator-progress.entity.js';
+import { IndicatorYearTarget } from '../indicators/indicator-year-target.entity.js';
 import { Submission } from '../submissions/submission.entity.js';
 import { Alert } from '../alerts/alert.entity.js';
 import { SDG_NAMES } from '../common/constants/sdg-names.js';
+import { ProjectMetaService } from '../project-meta/project-meta.service.js';
+import { expectedAt } from '../indicators/helpers/expected-progress.js';
 
 const MONTH_NAMES = [
   'Jan',
@@ -29,10 +32,13 @@ export class DashboardService {
     private readonly indicatorRepo: Repository<Indicator>,
     @InjectRepository(IndicatorProgress)
     private readonly progressRepo: Repository<IndicatorProgress>,
+    @InjectRepository(IndicatorYearTarget)
+    private readonly yearTargetsRepo: Repository<IndicatorYearTarget>,
     @InjectRepository(Submission)
     private readonly subRepo: Repository<Submission>,
     @InjectRepository(Alert)
     private readonly alertRepo: Repository<Alert>,
+    private readonly projectMetaService: ProjectMetaService,
   ) {}
 
   async getExecutive(userId: string, from?: string, to?: string) {
@@ -165,7 +171,9 @@ export class DashboardService {
     indicators: Indicator[],
     from?: string,
     to?: string,
-  ): Promise<{ month: string; actual: number; target: number }[]> {
+  ): Promise<
+    { month: string; actual: number; target: number; expected: number }[]
+  > {
     const now = new Date();
     const totalTarget = indicators.reduce((s, i) => s + Number(i.target), 0);
 
@@ -184,6 +192,45 @@ export class DashboardService {
       );
       months.push({ start, end, label: MONTH_NAMES[start.getMonth()] });
     }
+
+    // Year-target trajectory: sum of expectedAt(...) across indicators per
+    // month-end. Same unit-agnostic summation pattern as `target` above —
+    // mixed units already aggregate today, this just makes the aggregate
+    // year-aware.
+    const yearTargetRows = await this.yearTargetsRepo.find();
+    const yearTargetsByInd = new Map<string, IndicatorYearTarget[]>();
+    for (const yt of yearTargetRows) {
+      if (!yearTargetsByInd.has(yt.indicator_id))
+        yearTargetsByInd.set(yt.indicator_id, []);
+      yearTargetsByInd.get(yt.indicator_id)!.push(yt);
+    }
+    let baselineDate: Date | undefined;
+    try {
+      const meta = await this.projectMetaService.get();
+      baselineDate = new Date(Date.UTC(meta.baseline_year, 0, 1));
+    } catch (e) {
+      if (!(e instanceof NotFoundException)) throw e;
+    }
+    const expectedByMonth = months.map((m) => {
+      let totalExpected = 0;
+      for (const ind of indicators) {
+        const yts = yearTargetsByInd.get(ind.id) ?? [];
+        totalExpected += expectedAt(
+          {
+            target_mode: ind.target_mode,
+            target: Number(ind.target),
+            baseline: Number(ind.baseline),
+          },
+          yts.map((y) => ({
+            year: y.year,
+            target_value: Number(y.target_value),
+          })),
+          m.end,
+          { baselineDate },
+        );
+      }
+      return totalExpected;
+    });
 
     // Query actual progress data grouped by month
     const rangeStart = months[0].start;
@@ -227,19 +274,21 @@ export class DashboardService {
         (s, i) => s + Number(i.current_value),
         0,
       );
-      return months.map((m) => ({
+      return months.map((m, i) => ({
         month: m.label,
         actual: totalActual,
         target: totalTarget,
+        expected: expectedByMonth[i],
       }));
     }
 
-    return months.map((m) => {
+    return months.map((m, i) => {
       const key = `${m.start.getFullYear()}-${String(m.start.getMonth()).padStart(2, '0')}`;
       return {
         month: m.label,
         actual: actualByMonth.get(key) ?? 0,
         target: totalTarget,
+        expected: expectedByMonth[i],
       };
     });
   }
