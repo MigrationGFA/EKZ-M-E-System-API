@@ -17,10 +17,10 @@ Severity legend:
 
 The file currently contains:
 - A live Neon Postgres connection string with username + password
-- SMTP host, user, and **plaintext password** (`KDZuLRJrvoASS800`)
+- SMTP host, user, and **plaintext password** (value redacted; rotate)
 - Azure Storage account name + **full account key**
-- `JWT_SECRET=ekz-super-secret-jwt-key-2026` (a default-looking value, almost certainly never rotated)
-- `DEFAULT_USER_PASSWORD=Password12$`
+- `JWT_SECRET` set to a default-looking placeholder value (rotate)
+- `DEFAULT_USER_PASSWORD` set to a known weak value (rotate)
 
 **Why it matters:** Anyone with read access to the repo (or a clone, or git history on a forked branch) has full DB write, full Azure Blob write/delete, and full SMTP send capability under the project's identity. `JWT_SECRET` exposure means anyone can mint admin tokens.
 
@@ -34,7 +34,7 @@ The file currently contains:
 ### 1.2 `JWT_SECRET` looks like a default — **Critical** (subset of 1.1)
 **Where:** [ekz-server/.env:3](ekz-server/.env#L3)
 
-`ekz-super-secret-jwt-key-2026` reads like a placeholder that was never replaced. Combined with 1.1 (committed to repo), this allows any reader to forge tokens for any role.
+The configured value (since redacted from this document) read like a placeholder that was never replaced. Combined with 1.1 (committed to repo), this allowed any reader to forge tokens for any role.
 
 **Remediation:** Generate a fresh 256-bit random secret per environment.
 

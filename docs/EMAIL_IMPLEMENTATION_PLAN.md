@@ -20,9 +20,9 @@ pnpm add nodemailer && pnpm add -D @types/nodemailer
 ```env
 SMTP_HOST=mail.smtp2go.com
 SMTP_PORT=587
-SMTP_USER=dimpified
-SMTP_PASS=KDZuLRJrvoASS800
-SMTP_FROM=hello@dimpified.com
+SMTP_USER=your-smtp-user
+SMTP_PASS=your-smtp-password
+SMTP_FROM=hello@example.com
 ```
 
 ### Task 3 — Create `src/mail/mail.service.ts` (new file)

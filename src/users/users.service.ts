@@ -11,7 +11,15 @@ import { User } from './user.entity.js';
 import { UserRole } from '../common/enums/user-role.enum.js';
 import { MailService } from '../mail/mail.service.js';
 
-const DEFAULT_PASSWORD = process.env.DEFAULT_USER_PASSWORD ?? 'Password12$';
+function getDefaultPassword(): string {
+  const value = process.env.DEFAULT_USER_PASSWORD;
+  if (!value) {
+    throw new Error(
+      'DEFAULT_USER_PASSWORD is not set. Configure it in your environment before creating or resetting users.',
+    );
+  }
+  return value;
+}
 
 @Injectable()
 export class UsersService {
@@ -123,7 +131,8 @@ export class UsersService {
       throw new ConflictException(`Email ${email} already exists`);
     }
 
-    const hash = await bcrypt.hash(DEFAULT_PASSWORD, 10);
+    const defaultPassword = getDefaultPassword();
+    const hash = await bcrypt.hash(defaultPassword, 10);
 
     const user = this.usersRepo.create({
       name,
@@ -134,7 +143,7 @@ export class UsersService {
     });
     await this.usersRepo.save(user);
 
-    void this.mailService.sendWelcome(email, name, DEFAULT_PASSWORD);
+    void this.mailService.sendWelcome(email, name, defaultPassword);
 
     return { message: `User ${email} created successfully` };
   }
@@ -145,7 +154,8 @@ export class UsersService {
     const user = await this.usersRepo.findOne({ where: { id } });
     if (!user) throw new NotFoundException('User not found');
 
-    const hash = await bcrypt.hash(DEFAULT_PASSWORD, 10);
+    const defaultPassword = getDefaultPassword();
+    const hash = await bcrypt.hash(defaultPassword, 10);
     user.password_hash = hash;
     user.is_default_password = true;
     await this.usersRepo.save(user);
@@ -153,7 +163,7 @@ export class UsersService {
     void this.mailService.sendPasswordReset(
       user.email,
       user.name,
-      DEFAULT_PASSWORD,
+      defaultPassword,
     );
 
     return { message: 'Password reset to default', userName: user.name };

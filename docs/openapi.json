@@ -1874,7 +1874,7 @@
                 "properties": {
                     "current_password": {
                         "type": "string",
-                        "example": "Password12$"
+                        "example": "CurrentPass99!"
                     },
                     "new_password": {
                         "type": "string",

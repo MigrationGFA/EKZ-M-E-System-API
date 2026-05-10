@@ -19,9 +19,7 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  * See: docs/afdb-alignment/IMPLEMENTATION_PLAN.md (Phase 2)
  *      docs/afdb-alignment/decisions/0004-frequency-and-cadence.md
  */
-export class IndicatorAfdbMetadata_1700000000011
-  implements MigrationInterface
-{
+export class IndicatorAfdbMetadata_1700000000011 implements MigrationInterface {
   public async up(queryRunner: QueryRunner): Promise<void> {
     // Drop the single-column UNIQUE on `code`. The composite (code, kind)
     // unique index added below replaces it.

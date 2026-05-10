@@ -13,9 +13,7 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  *
  * See: docs/afdb-alignment/decisions/0002-hierarchy.md
  */
-export class LogframeHierarchyV2_1700000000010
-  implements MigrationInterface
-{
+export class LogframeHierarchyV2_1700000000010 implements MigrationInterface {
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`
       ALTER TABLE logframe_nodes

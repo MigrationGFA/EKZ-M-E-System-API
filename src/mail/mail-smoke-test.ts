@@ -12,12 +12,23 @@ dotenv.config();
 
 const TO = 'fofama9304@soppat.com';
 
+function requireEnv(name: string): string {
+  const value = process.env[name];
+  if (!value) {
+    console.error(
+      `✗  Missing required env var: ${name}. Populate .env before running.`,
+    );
+    process.exit(1);
+  }
+  return value;
+}
+
 const SMTP = {
-  host: process.env.SMTP_HOST ?? 'mail.mandefied.com',
+  host: requireEnv('SMTP_HOST'),
   port: Number(process.env.SMTP_PORT ?? 587),
-  user: process.env.SMTP_USER ?? 'hello@mandefied.com',
-  pass: process.env.SMTP_PASS ?? 'KDZuLRJrvoASS800',
-  from: process.env.SMTP_FROM ?? 'hello@mandefied.com',
+  user: requireEnv('SMTP_USER'),
+  pass: requireEnv('SMTP_PASS'),
+  from: requireEnv('SMTP_FROM'),
 };
 
 const transporter = nodemailer.createTransport({
@@ -80,7 +91,7 @@ const emails: { label: string; subject: string; html: string }[] = [
        <p>Your login credentials:</p>
        <ul>
          <li><strong>Email:</strong> grace.okonkwo@ekz.com</li>
-         <li><strong>Password:</strong> Password12$</li>
+         <li><strong>Password:</strong> &lt;temporary-password&gt;</li>
        </ul>
        <p>Please log in and change your password immediately.</p>`,
     ),
@@ -92,7 +103,7 @@ const emails: { label: string; subject: string; html: string }[] = [
       'Password Reset',
       `<p>Hi Grace Okonkwo,</p>
        <p>An administrator has reset your password.</p>
-       <p>Your new temporary password: <strong>Password12$</strong></p>
+       <p>Your new temporary password: <strong>&lt;temporary-password&gt;</strong></p>
        <p>Please log in and change your password immediately.</p>`,
     ),
   },
