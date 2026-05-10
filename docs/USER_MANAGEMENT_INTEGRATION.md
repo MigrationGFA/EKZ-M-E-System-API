@@ -7,7 +7,7 @@ Share this with the frontend team before integration testing.
 
 ## Overview of changes
 
-- Default password changed from `TempPass123!` to `Password12$` (configurable via `DEFAULT_USER_PASSWORD` env var)
+- Default password is now configurable via the `DEFAULT_USER_PASSWORD` env var (previously hardcoded). Set this per environment; never reuse across environments.
 - New `is_default_password` boolean field added to all user responses
 - New endpoint: `POST /api/auth/change-password`
 - New endpoint: `PUT /api/users/:id/reset-password`
@@ -44,7 +44,7 @@ Public. Rate-limited to 5 requests per 60 seconds.
 
 **Request:**
 ```json
-{ "email": "user@ekz.com", "password": "Password12$" }
+{ "email": "user@ekz.com", "password": "<DEFAULT_USER_PASSWORD>" }
 ```
 
 **Response `200`:**
@@ -100,7 +100,7 @@ Requires: Bearer token. Any authenticated role.
 **Request:**
 ```json
 {
-  "current_password": "Password12$",
+  "current_password": "<DEFAULT_USER_PASSWORD>",
   "new_password": "NewSecure99!"
 }
 ```
@@ -188,7 +188,7 @@ Omitting `page`/`per_page` returns all records.
 
 ### `PUT /api/users/:id/reset-password`
 
-Resets a user's password back to the system default (`Password12$`).
+Resets a user's password back to the system default (the value of `DEFAULT_USER_PASSWORD`).
 Sets `is_default_password = true`.
 
 **No request body.**
@@ -259,7 +259,7 @@ Login → is_default_password: true → redirect to /change-password
 ```
 Admin: PUT /api/users/:id/reset-password
 → is_default_password set to true on their account
-User: logs in with Password12$ → prompted to change password
+User: logs in with the default password → prompted to change password
 ```
 
 ### Reactivate user
