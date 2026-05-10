@@ -9,6 +9,7 @@ import { IndicatorsController } from './indicators.controller.js';
 import { UsersModule } from '../users/users.module.js';
 import { AuditModule } from '../audit/audit.module.js';
 import { AlertsModule } from '../alerts/alerts.module.js';
+import { ProjectMetaModule } from '../project-meta/project-meta.module.js';
 
 @Module({
   imports: [
@@ -21,6 +22,7 @@ import { AlertsModule } from '../alerts/alerts.module.js';
     UsersModule,
     AuditModule,
     AlertsModule,
+    ProjectMetaModule,
   ],
   controllers: [IndicatorsController],
   providers: [IndicatorsService],

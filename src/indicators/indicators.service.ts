@@ -2,20 +2,25 @@ import {
   Injectable,
   NotFoundException,
   ConflictException,
+  BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Indicator } from './indicator.entity.js';
 import { IndicatorProgress } from './indicator-progress.entity.js';
+import { IndicatorYearTarget } from './indicator-year-target.entity.js';
 import { Form } from '../forms/form.entity.js';
 import { CreateIndicatorDto } from './dto/create-indicator.dto.js';
 import { UpdateIndicatorDto } from './dto/update-indicator.dto.js';
 import { CreateProgressDto } from './dto/create-progress.dto.js';
+import { SetYearTargetsDto } from './dto/year-target.dto.js';
 import { computeStatus } from './helpers/compute-status.js';
+import { expectedAt } from './helpers/expected-progress.js';
 import { UsersService } from '../users/users.service.js';
 import { MailService } from '../mail/mail.service.js';
 import { AuditService } from '../audit/audit.service.js';
 import { AlertsService } from '../alerts/alerts.service.js';
+import { ProjectMetaService } from '../project-meta/project-meta.service.js';
 
 @Injectable()
 export class IndicatorsService {
@@ -24,12 +29,15 @@ export class IndicatorsService {
     private readonly indicatorRepo: Repository<Indicator>,
     @InjectRepository(IndicatorProgress)
     private readonly progressRepo: Repository<IndicatorProgress>,
+    @InjectRepository(IndicatorYearTarget)
+    private readonly yearTargetsRepo: Repository<IndicatorYearTarget>,
     @InjectRepository(Form)
     private readonly formRepo: Repository<Form>,
     private readonly usersService: UsersService,
     private readonly mailService: MailService,
     private readonly auditService: AuditService,
     private readonly alertsService: AlertsService,
+    private readonly projectMetaService: ProjectMetaService,
   ) {}
 
   async findAll(filters: {
@@ -150,9 +158,10 @@ export class IndicatorsService {
 
     // Recompute status if current_value or target changed
     if (dto.current_value !== undefined || dto.target !== undefined) {
+      const expected = await this.getExpectedAt(indicator, new Date());
       indicator.status = computeStatus(
         Number(indicator.current_value),
-        Number(indicator.target),
+        expected,
       );
     }
 
@@ -299,10 +308,8 @@ export class IndicatorsService {
 
     if (latestEntry && latestEntry.id === savedProgress.id) {
       indicator.current_value = dto.value;
-      indicator.status = computeStatus(
-        Number(dto.value),
-        Number(indicator.target),
-      );
+      const expected = await this.getExpectedAt(indicator, new Date());
+      indicator.status = computeStatus(Number(dto.value), expected);
       await this.indicatorRepo.save(indicator);
 
       this.notifyStatusChangeIfNeeded(
@@ -332,6 +339,130 @@ export class IndicatorsService {
     });
 
     return progressResult;
+  }
+
+  async getYearTargets(indicatorId: string) {
+    const indicator = await this.indicatorRepo.findOne({
+      where: { id: indicatorId },
+    });
+    if (!indicator) throw new NotFoundException('Indicator not found');
+
+    const rows = await this.yearTargetsRepo.find({
+      where: { indicator_id: indicatorId },
+      order: { year: 'ASC' },
+    });
+    return this.serializeYearTargets(rows);
+  }
+
+  async setYearTargets(
+    indicatorId: string,
+    dto: SetYearTargetsDto,
+    actorId: string,
+    actorName: string,
+  ) {
+    const indicator = await this.indicatorRepo.findOne({
+      where: { id: indicatorId },
+    });
+    if (!indicator) throw new NotFoundException('Indicator not found');
+
+    const years = dto.targets.map((t) => t.year);
+    if (new Set(years).size !== years.length) {
+      throw new BadRequestException('Duplicate years in year-targets payload');
+    }
+
+    const beforeRows = await this.yearTargetsRepo.find({
+      where: { indicator_id: indicatorId },
+      order: { year: 'ASC' },
+    });
+
+    const saved = await this.indicatorRepo.manager.transaction(async (em) => {
+      await em.delete(IndicatorYearTarget, { indicator_id: indicatorId });
+      if (dto.targets.length === 0) return [] as IndicatorYearTarget[];
+      const rows = dto.targets.map((t) =>
+        em.create(IndicatorYearTarget, {
+          indicator_id: indicatorId,
+          year: t.year,
+          target_value: t.target_value,
+          notes: t.notes ?? null,
+        }),
+      );
+      return em.save(IndicatorYearTarget, rows);
+    });
+
+    saved.sort((a, b) => a.year - b.year);
+
+    // Status may have moved now that the year-target trajectory has changed.
+    const oldStatus = indicator.status;
+    const expected = await this.getExpectedAt(indicator, new Date());
+    indicator.status = computeStatus(Number(indicator.current_value), expected);
+    if (indicator.status !== oldStatus) {
+      await this.indicatorRepo.save(indicator);
+      this.notifyStatusChangeIfNeeded(
+        oldStatus,
+        indicator.status,
+        indicator.name,
+        indicator.code,
+      );
+    }
+
+    const beforeData = this.serializeYearTargets(beforeRows);
+    const afterData = this.serializeYearTargets(saved);
+
+    void this.auditService.log({
+      user_id: actorId,
+      user_name: actorName,
+      action: 'update',
+      resource: 'indicator_year_targets',
+      resource_id: indicatorId,
+      before_data: beforeData,
+      after_data: afterData,
+    });
+
+    return afterData;
+  }
+
+  private async getExpectedAt(
+    indicator: Indicator,
+    asOf: Date,
+  ): Promise<number> {
+    const yearTargets = await this.yearTargetsRepo.find({
+      where: { indicator_id: indicator.id },
+      order: { year: 'ASC' },
+    });
+
+    let baselineDate: Date | undefined;
+    try {
+      const meta = await this.projectMetaService.get();
+      baselineDate = new Date(Date.UTC(meta.baseline_year, 0, 1));
+    } catch (e) {
+      if (!(e instanceof NotFoundException)) throw e;
+      // project_meta not initialised — fall back to flat-baseline behaviour
+    }
+
+    return expectedAt(
+      {
+        target_mode: indicator.target_mode,
+        target: Number(indicator.target),
+        baseline: Number(indicator.baseline),
+      },
+      yearTargets.map((t) => ({
+        year: t.year,
+        target_value: Number(t.target_value),
+      })),
+      asOf,
+      { baselineDate },
+    );
+  }
+
+  private serializeYearTargets(rows: IndicatorYearTarget[]) {
+    return rows.map((r) => ({
+      indicator_id: r.indicator_id,
+      year: r.year,
+      target_value: Number(r.target_value),
+      notes: r.notes,
+      createdAt: r.created_at,
+      updatedAt: r.updated_at,
+    }));
   }
 
   private notifyStatusChangeIfNeeded(
