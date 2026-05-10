@@ -7,10 +7,7 @@ import { ProjectMetaController } from './project-meta.controller.js';
 import { AuditModule } from '../audit/audit.module.js';
 
 @Module({
-  imports: [
-    TypeOrmModule.forFeature([ProjectMeta, LogframeNode]),
-    AuditModule,
-  ],
+  imports: [TypeOrmModule.forFeature([ProjectMeta, LogframeNode]), AuditModule],
   controllers: [ProjectMetaController],
   providers: [ProjectMetaService],
   exports: [ProjectMetaService],

@@ -10,7 +10,13 @@ import {
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
-const LEVELS = ['alignment', 'impact', 'outcome', 'output', 'activity'] as const;
+const LEVELS = [
+  'alignment',
+  'impact',
+  'outcome',
+  'output',
+  'activity',
+] as const;
 const KINDS = ['alignment', 'outcome', 'output', 'activity'] as const;
 const FREQUENCIES = [
   'monthly',
