@@ -193,7 +193,7 @@ The `try/catch` exists "for now, just check if the table exists" — comment is 
 
 **Remediation:** Remove the try/catch and let real conflict errors bubble up.
 
-### 4.4 Reports `download_url` is always `"#"` — **Medium**
+### 4.4 Reports `download_url` is always `"#"` — **Medium** — _Resolved (PDF) in Phase 9_
 **Where:** [ekz-server/src/reports/reports.controller.ts:74-75](ekz-server/src/reports/reports.controller.ts#L74-L75)
 
 > "Reports are generated client-side (jsPDF/SheetJS). This endpoint only records the metadata. download_url is always '#'."
@@ -201,6 +201,8 @@ The `try/catch` exists "for now, just check if the table exists" — comment is 
 **Why it matters:** If a user closes the tab during generation, the artifact is lost forever. The reports list shows entries with non-functional download links — they cannot re-download a report they "generated" yesterday.
 
 **Remediation:** Either generate server-side and persist to Azure Blob, or stop pretending to record reports (drop the metadata table) and treat them as ephemeral exports.
+
+**Status (Phase 9, 2026-05-12):** `format=pdf` now renders server-side via PDFKit, uploads to `wiftdocuments/reports/{id}.pdf`, and persists the public URL. The reports list shows working download links for PDFs. `format=excel` remains client-side (`download_url='#'`) per scope decision — only the PDF path was load-bearing for the AfDB supervision workflow; XLSX exports are ephemeral by design.
 
 ### 4.5 `MSWProvider` blanks the entire app while initializing — **Medium**
 **Where:** [ekz/components/providers/MSWProvider.tsx:46](ekz/components/providers/MSWProvider.tsx#L46)

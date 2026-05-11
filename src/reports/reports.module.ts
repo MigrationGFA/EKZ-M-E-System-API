@@ -13,6 +13,7 @@ import { UsersModule } from '../users/users.module.js';
 import { AuditModule } from '../audit/audit.module.js';
 import { ProjectMetaModule } from '../project-meta/project-meta.module.js';
 import { IndicatorsModule } from '../indicators/indicators.module.js';
+import { StorageModule } from '../storage/storage.module.js';
 
 @Module({
   imports: [
@@ -29,6 +30,7 @@ import { IndicatorsModule } from '../indicators/indicators.module.js';
     AuditModule,
     ProjectMetaModule,
     IndicatorsModule,
+    StorageModule,
   ],
   controllers: [ReportsController],
   providers: [ReportsService],

@@ -15,6 +15,14 @@ import { ProjectMetaService } from '../project-meta/project-meta.service.js';
 import { expectedAt } from '../indicators/helpers/expected-progress.js';
 import { DisaggregationService } from '../indicators/disaggregation.service.js';
 import { DisaggregationAxis } from '../indicators/dto/disaggregation.dto.js';
+import { AzureStorageService } from '../storage/azure-storage.service.js';
+import { renderAfdbSupervisionPdf } from './templates/afdb-supervision.js';
+
+// Phase 9: Azure container reuse — supervision PDFs live alongside Phase 6
+// evidence documents in `wiftdocuments`, keyed under `reports/`. Single
+// container = single RBAC posture + single lifecycle policy.
+const REPORTS_CONTAINER = 'wiftdocuments';
+const REPORTS_KEY_PREFIX = 'reports';
 
 interface ProjectAnchors {
   baselineDate?: Date;
@@ -161,6 +169,7 @@ export class ReportsService {
     private readonly auditService: AuditService,
     private readonly projectMetaService: ProjectMetaService,
     private readonly disaggregationService: DisaggregationService,
+    private readonly azureStorage: AzureStorageService,
   ) {}
 
   async findAll() {
@@ -196,6 +205,29 @@ export class ReportsService {
     });
     const saved = await this.reportRepo.save(report);
 
+    // Phase 9: server-side PDF generation. Excel stays client-side — this
+    // endpoint only records metadata for non-PDF formats and the client is
+    // responsible for the XLSX download. Closes AUDIT_FINDINGS §4.4 for
+    // the PDF path.
+    let downloadUrl = '#';
+    if (format === 'pdf') {
+      const data = await this.getSupervisionData(
+        generatedBy,
+        typeof filters.date_from === 'string' ? filters.date_from : undefined,
+        typeof filters.date_to === 'string' ? filters.date_to : undefined,
+      );
+      const buffer = await renderAfdbSupervisionPdf(data);
+      const key = `${REPORTS_KEY_PREFIX}/${saved.id}.pdf`;
+      downloadUrl = await this.azureStorage.uploadDocument(
+        REPORTS_CONTAINER,
+        key,
+        buffer,
+        'application/pdf',
+      );
+      saved.download_url = downloadUrl;
+      await this.reportRepo.save(saved);
+    }
+
     void this.auditService.log({
       user_id: actorId,
       user_name: generatorEmail,
@@ -214,7 +246,7 @@ export class ReportsService {
 
     return {
       report_id: saved.id,
-      download_url: saved.download_url,
+      download_url: downloadUrl,
       format: saved.format,
     };
   }
