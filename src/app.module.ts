@@ -21,6 +21,7 @@ import { SchedulerModule } from './scheduler/scheduler.module.js';
 import { StorageModule } from './storage/storage.module.js';
 import { ProjectMetaModule } from './project-meta/project-meta.module.js';
 import { BeneficiariesModule } from './beneficiaries/beneficiaries.module.js';
+import { EvidenceModule } from './evidence/evidence.module.js';
 
 @Module({
   imports: [
@@ -57,6 +58,7 @@ import { BeneficiariesModule } from './beneficiaries/beneficiaries.module.js';
     StorageModule,
     ProjectMetaModule,
     BeneficiariesModule,
+    EvidenceModule,
   ],
 })
 export class AppModule {}
