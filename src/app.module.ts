@@ -20,6 +20,7 @@ import { ReportsModule } from './reports/reports.module.js';
 import { SchedulerModule } from './scheduler/scheduler.module.js';
 import { StorageModule } from './storage/storage.module.js';
 import { ProjectMetaModule } from './project-meta/project-meta.module.js';
+import { BeneficiariesModule } from './beneficiaries/beneficiaries.module.js';
 
 @Module({
   imports: [
@@ -55,6 +56,7 @@ import { ProjectMetaModule } from './project-meta/project-meta.module.js';
     SchedulerModule,
     StorageModule,
     ProjectMetaModule,
+    BeneficiariesModule,
   ],
 })
 export class AppModule {}
