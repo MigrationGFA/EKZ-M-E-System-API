@@ -3,6 +3,8 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { Indicator } from './indicator.entity.js';
 import { IndicatorProgress } from './indicator-progress.entity.js';
 import { IndicatorYearTarget } from './indicator-year-target.entity.js';
+import { IndicatorDisaggregation } from './indicator-disaggregation.entity.js';
+import { IndicatorProgressBreakdown } from './indicator-progress-breakdown.entity.js';
 import { Form } from '../forms/form.entity.js';
 import { IndicatorsService } from './indicators.service.js';
 import { IndicatorsController } from './indicators.controller.js';
@@ -17,6 +19,8 @@ import { ProjectMetaModule } from '../project-meta/project-meta.module.js';
       Indicator,
       IndicatorProgress,
       IndicatorYearTarget,
+      IndicatorDisaggregation,
+      IndicatorProgressBreakdown,
       Form,
     ]),
     UsersModule,
