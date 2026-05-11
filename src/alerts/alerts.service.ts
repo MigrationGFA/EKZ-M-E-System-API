@@ -73,6 +73,31 @@ export class AlertsService {
     return this.serialize(saved);
   }
 
+  /**
+   * Phase 8: scheduler-side dedup. Returns true if an alert with this
+   * user/type whose title begins with `titlePrefix` was created after
+   * `since`. The title-prefix match keeps the indicator-code suffix
+   * scoped — caller passes e.g. `Reporting Overdue: OUT-2.1` so we only
+   * suppress the matching indicator, not other codes that contain the
+   * same substring.
+   */
+  async hasRecentAlert(filters: {
+    user_id: string;
+    type: string;
+    title_prefix: string;
+    since: Date;
+  }): Promise<boolean> {
+    const count = await this.alertRepo
+      .createQueryBuilder('a')
+      .where('a.user_id = :userId', { userId: filters.user_id })
+      .andWhere('a.type = :type', { type: filters.type })
+      .andWhere('a.title LIKE :prefix', { prefix: `${filters.title_prefix}%` })
+      .andWhere('a.created_at > :since', { since: filters.since })
+      .limit(1)
+      .getCount();
+    return count > 0;
+  }
+
   async markRead(id: string) {
     const alert = await this.alertRepo.findOne({ where: { id } });
     if (!alert) throw new NotFoundException('Alert not found');
