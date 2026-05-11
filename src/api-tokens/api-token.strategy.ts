@@ -6,6 +6,7 @@ import { Repository } from 'typeorm';
 import * as bcrypt from 'bcrypt';
 import type { Request } from 'express';
 import { ApiToken } from './api-token.entity.js';
+import { UserRole } from '../common/enums/user-role.enum.js';
 
 @Injectable()
 export class ApiTokenStrategy extends PassportStrategy(Strategy, 'api-token') {
@@ -18,7 +19,7 @@ export class ApiTokenStrategy extends PassportStrategy(Strategy, 'api-token') {
 
   async validate(
     req: Request,
-  ): Promise<{ id: string; email: string; role: string }> {
+  ): Promise<{ id: string; email: string; role: UserRole }> {
     const authHeader = req.headers['authorization'];
     if (!authHeader || !authHeader.startsWith('Bearer ekz_LIVE_')) {
       throw new UnauthorizedException('Invalid API token');
@@ -33,7 +34,7 @@ export class ApiTokenStrategy extends PassportStrategy(Strategy, 'api-token') {
         return {
           id: stored.id,
           email: `api-token:${stored.name}`,
-          role: 'api_token',
+          role: UserRole.API_TOKEN,
         };
       }
     }
