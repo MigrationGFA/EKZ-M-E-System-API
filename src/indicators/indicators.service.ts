@@ -21,6 +21,7 @@ import { MailService } from '../mail/mail.service.js';
 import { AuditService } from '../audit/audit.service.js';
 import { AlertsService } from '../alerts/alerts.service.js';
 import { ProjectMetaService } from '../project-meta/project-meta.service.js';
+import { DisaggregationService } from './disaggregation.service.js';
 
 @Injectable()
 export class IndicatorsService {
@@ -38,6 +39,7 @@ export class IndicatorsService {
     private readonly auditService: AuditService,
     private readonly alertsService: AlertsService,
     private readonly projectMetaService: ProjectMetaService,
+    private readonly disaggregationService: DisaggregationService,
   ) {}
 
   async findAll(filters: {
@@ -299,6 +301,14 @@ export class IndicatorsService {
       submitted_by: dto.submittedBy,
     });
     const savedProgress = await this.progressRepo.save(progress);
+
+    if (dto.breakdowns?.length) {
+      await this.disaggregationService.persistBreakdowns(
+        savedProgress.id,
+        Number(dto.value),
+        dto.breakdowns,
+      );
+    }
 
     // Only update current_value if this entry is the most recent by date
     const latestEntry = await this.progressRepo.findOne({

@@ -1,5 +1,14 @@
-import { IsNumber, IsDateString, IsOptional, IsString } from 'class-validator';
+import {
+  IsArray,
+  IsDateString,
+  IsNumber,
+  IsOptional,
+  IsString,
+  ValidateNested,
+} from 'class-validator';
+import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { ProgressBreakdownDto } from './disaggregation.dto.js';
 
 export class CreateProgressDto {
   @ApiProperty({ example: 3450, description: 'Progress value to record' })
@@ -24,4 +33,15 @@ export class CreateProgressDto {
   })
   @IsString()
   submittedBy: string;
+
+  @ApiPropertyOptional({
+    type: [ProgressBreakdownDto],
+    description:
+      'Optional per-axis breakdowns (Phase 4 disaggregation). Each axis appears at most once.',
+  })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => ProgressBreakdownDto)
+  breakdowns?: ProgressBreakdownDto[];
 }

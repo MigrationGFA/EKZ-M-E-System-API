@@ -21,11 +21,16 @@ import {
   ApiQuery,
 } from '@nestjs/swagger';
 import { IndicatorsService } from './indicators.service.js';
+import { DisaggregationService } from './disaggregation.service.js';
 import { CreateIndicatorDto } from './dto/create-indicator.dto.js';
 import { UpdateIndicatorDto } from './dto/update-indicator.dto.js';
 import { CreateProgressDto } from './dto/create-progress.dto.js';
 import { FindIndicatorsQueryDto } from './dto/find-indicators-query.dto.js';
 import { SetYearTargetsDto } from './dto/year-target.dto.js';
+import {
+  RollupQueryDto,
+  SetDisaggregationsDto,
+} from './dto/disaggregation.dto.js';
 import { Roles } from '../auth/roles.decorator.js';
 import { UserRole } from '../common/enums/user-role.enum.js';
 
@@ -33,7 +38,10 @@ import { UserRole } from '../common/enums/user-role.enum.js';
 @ApiBearerAuth('JWT')
 @Controller('indicators')
 export class IndicatorsController {
-  constructor(private readonly indicatorsService: IndicatorsService) {}
+  constructor(
+    private readonly indicatorsService: IndicatorsService,
+    private readonly disaggregationService: DisaggregationService,
+  ) {}
 
   @Get()
   @ApiOperation({
@@ -210,6 +218,77 @@ export class IndicatorsController {
       req.user.id as string,
       req.user.email as string,
     );
+  }
+
+  @Get(':id/disaggregation')
+  @ApiOperation({
+    summary: 'Get disaggregation rules for an indicator',
+    description:
+      'Returns one row per axis (sex, age_band, cohort, skill_level, geography, university_origin). Empty array if no rules defined.',
+  })
+  @ApiParam({ name: 'id', description: 'Indicator UUID' })
+  @ApiResponse({ status: 200, description: 'Array of disaggregation rules' })
+  @ApiResponse({ status: 404, description: 'Indicator not found' })
+  getDisaggregation(@Param('id', ParseUUIDPipe) id: string) {
+    return this.disaggregationService.getRules(id);
+  }
+
+  @Put(':id/disaggregation')
+  @Roles(UserRole.ADMIN, UserRole.ME_STAFF)
+  @ApiOperation({
+    summary: 'Replace disaggregation rules for an indicator',
+    description:
+      'Bulk replace — deletes existing rules and inserts the payload atomically. Each axis may appear at most once.',
+  })
+  @ApiParam({ name: 'id', description: 'Indicator UUID' })
+  @ApiResponse({
+    status: 200,
+    description: 'Persisted disaggregation rules (sorted ascending by axis)',
+  })
+  @ApiResponse({ status: 400, description: 'Duplicate axes in payload' })
+  @ApiResponse({ status: 404, description: 'Indicator not found' })
+  setDisaggregation(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: SetDisaggregationsDto,
+    @Request() req: any,
+  ) {
+    return this.disaggregationService.setRules(
+      id,
+      dto,
+      req.user.id as string,
+      req.user.email as string,
+    );
+  }
+
+  @Get(':id/disaggregation/rollup')
+  @ApiOperation({
+    summary: 'Aggregate disaggregated progress for an indicator on one axis',
+    description:
+      'Sums value_breakdown JSONB across every progress entry on the given axis. Returns total, per-bucket counts, the matching rule target (if any), and the bucket-keyed gap to target.',
+  })
+  @ApiParam({ name: 'id', description: 'Indicator UUID' })
+  @ApiQuery({
+    name: 'axis',
+    enum: [
+      'sex',
+      'age_band',
+      'cohort',
+      'skill_level',
+      'geography',
+      'university_origin',
+    ],
+    description: 'Axis to aggregate over',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Rollup with total, buckets, target, and gap',
+  })
+  @ApiResponse({ status: 404, description: 'Indicator not found' })
+  getDisaggregationRollup(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query() query: RollupQueryDto,
+  ) {
+    return this.disaggregationService.getRollup(id, query.axis);
   }
 
   @Delete(':id')
