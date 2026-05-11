@@ -68,7 +68,59 @@ export class AzureStorageService {
     }
   }
 
+  /**
+   * Uploads a document buffer (PDF / image / office / csv / zip) to the given
+   * container. Unlike `uploadBase64Image`, this expects an already-decoded
+   * binary buffer and a deterministic key — the caller is responsible for
+   * the key namespace (e.g. `documents/{uuid}/{filename}`).
+   *
+   * Returns the full public HTTPS URL of the uploaded blob.
+   */
+  async uploadDocument(
+    containerName: string,
+    key: string,
+    buffer: Buffer,
+    contentType: string,
+  ): Promise<string> {
+    if (!this.blobServiceClient) {
+      return this.saveDocumentLocally(key, buffer);
+    }
+
+    const containerClient = this.getContainerClient(containerName);
+    try {
+      await containerClient.createIfNotExists({ access: 'blob' });
+      const blockBlobClient = containerClient.getBlockBlobClient(key);
+      await blockBlobClient.uploadData(buffer, {
+        blobHTTPHeaders: { blobContentType: contentType },
+      });
+      this.logger.log(`Uploaded document: ${key} (${buffer.length} bytes)`);
+      return blockBlobClient.url;
+    } catch (err) {
+      this.logger.error(
+        `Azure document upload failed — container: ${containerName}, key: ${key}`,
+        err instanceof Error ? err.stack : String(err),
+      );
+      throw new InternalServerErrorException(
+        'Document upload to storage failed',
+      );
+    }
+  }
+
   // ── Private helpers ──────────────────────────────────────────────────────────
+
+  private async saveDocumentLocally(
+    key: string,
+    buffer: Buffer,
+  ): Promise<string> {
+    const dir = path.resolve(process.cwd(), 'uploads', path.dirname(key));
+    await fs.mkdir(dir, { recursive: true });
+    const fullPath = path.join(process.cwd(), 'uploads', key);
+    await fs.writeFile(fullPath, buffer);
+    const base =
+      process.env.APP_URL ?? `http://localhost:${process.env.PORT ?? 3000}`;
+    this.logger.warn(`Azure not configured — saved locally: uploads/${key}`);
+    return `${base}/uploads/${key}`;
+  }
 
   private async saveLocally(
     submissionId: string,
