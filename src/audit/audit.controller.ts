@@ -40,6 +40,12 @@ export class AuditController {
   })
   @ApiQuery({ name: 'resource', required: false, example: 'indicator' })
   @ApiQuery({
+    name: 'resource_id',
+    required: false,
+    description:
+      'Scope to a single resource — e.g. on the indicator detail page Audit tab.',
+  })
+  @ApiQuery({
     name: 'from',
     required: false,
     description: 'ISO date filter start',
@@ -53,6 +59,7 @@ export class AuditController {
     @Query('user_id') user_id?: string,
     @Query('action') action?: string,
     @Query('resource') resource?: string,
+    @Query('resource_id') resource_id?: string,
     @Query('from') from?: string,
     @Query('to') to?: string,
     @Query('page') page?: string,
@@ -62,6 +69,7 @@ export class AuditController {
       user_id,
       action,
       resource,
+      resource_id,
       from,
       to,
       page: page ? Number(page) : undefined,

@@ -24,6 +24,7 @@ export class AuditService {
     user_id?: string;
     action?: string;
     resource?: string;
+    resource_id?: string;
     from?: string;
     to?: string;
     page?: number;
@@ -39,6 +40,11 @@ export class AuditService {
     }
     if (filters.resource) {
       qb.andWhere('a.resource = :resource', { resource: filters.resource });
+    }
+    if (filters.resource_id) {
+      qb.andWhere('a.resource_id = :resourceId', {
+        resourceId: filters.resource_id,
+      });
     }
     if (filters.from) {
       qb.andWhere('a.created_at >= :from', { from: filters.from });

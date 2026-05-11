@@ -70,9 +70,9 @@ export class ReportsController {
   @Roles(UserRole.ADMIN, UserRole.ME_STAFF)
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({
-    summary: 'Record a generated report',
+    summary: 'Generate a report and record its metadata',
     description:
-      'Reports are generated client-side (jsPDF/SheetJS). This endpoint only records the metadata. download_url is always "#".',
+      'When format=pdf, renders the AfDB supervision PDF server-side, uploads to Azure Blob (container `wiftdocuments`, key prefix `reports/`), and returns the public download URL. When format=excel, only metadata is recorded — the client handles XLSX export.',
   })
   @ApiResponse({
     status: 201,

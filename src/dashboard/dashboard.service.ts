@@ -6,9 +6,23 @@ import { IndicatorProgress } from '../indicators/indicator-progress.entity.js';
 import { IndicatorYearTarget } from '../indicators/indicator-year-target.entity.js';
 import { Submission } from '../submissions/submission.entity.js';
 import { Alert } from '../alerts/alert.entity.js';
+import { LogframeNode } from '../logframe/logframe-node.entity.js';
 import { SDG_NAMES } from '../common/constants/sdg-names.js';
 import { ProjectMetaService } from '../project-meta/project-meta.service.js';
 import { expectedAt } from '../indicators/helpers/expected-progress.js';
+
+export interface DashboardComponentCard {
+  id: string;
+  code: string;
+  title: string;
+  budget_usd: number | null;
+  budget_currency: string;
+  indicator_count: number;
+  on_track: number;
+  at_risk: number;
+  off_track: number;
+  progress_pct: number;
+}
 
 const MONTH_NAMES = [
   'Jan',
@@ -38,6 +52,8 @@ export class DashboardService {
     private readonly subRepo: Repository<Submission>,
     @InjectRepository(Alert)
     private readonly alertRepo: Repository<Alert>,
+    @InjectRepository(LogframeNode)
+    private readonly nodeRepo: Repository<LogframeNode>,
     private readonly projectMetaService: ProjectMetaService,
   ) {}
 
@@ -157,6 +173,12 @@ export class DashboardService {
       timestamp: a.created_at,
     }));
 
+    // Phase 9 — component cards + alerts_open counter
+    const components = await this.buildComponentCards(indicators);
+    const alerts_open = await this.alertRepo.count({
+      where: { is_read: false },
+    });
+
     return {
       kpis,
       monthly_trend,
@@ -164,6 +186,99 @@ export class DashboardService {
       sdg_progress,
       recent_submissions,
       recent_alerts,
+      components,
+      alerts_open,
+    };
+  }
+
+  /**
+   * Phase 9: per-component rollup for the dashboard.
+   *
+   * Walks every logframe_node where type='component', recursively collects
+   * indicators on the component itself + every descendant, and returns a
+   * card per component with status counts + a weighted average of
+   * current/target ratios (capped at 1.0 per indicator). Budget is the raw
+   * envelope from the node row; consumption is not yet wired (deferred).
+   */
+  private async buildComponentCards(
+    indicators: Indicator[],
+  ): Promise<DashboardComponentCard[]> {
+    const allNodes = await this.nodeRepo.find({ order: { order: 'ASC' } });
+    const components = allNodes.filter((n) => n.type === 'component');
+    if (components.length === 0) return [];
+
+    const childrenByParent = new Map<string, LogframeNode[]>();
+    for (const n of allNodes) {
+      if (!n.parent_id) continue;
+      const list = childrenByParent.get(n.parent_id) ?? [];
+      list.push(n);
+      childrenByParent.set(n.parent_id, list);
+    }
+
+    const indByNode = new Map<string, Indicator[]>();
+    for (const ind of indicators) {
+      if (!ind.logframe_level_id) continue;
+      const list = indByNode.get(ind.logframe_level_id) ?? [];
+      list.push(ind);
+      indByNode.set(ind.logframe_level_id, list);
+    }
+
+    return components.map((c) =>
+      this.toComponentCard(c, childrenByParent, indByNode),
+    );
+  }
+
+  private toComponentCard(
+    component: LogframeNode,
+    childrenByParent: Map<string, LogframeNode[]>,
+    indByNode: Map<string, Indicator[]>,
+  ): DashboardComponentCard {
+    const descendantIds: string[] = [];
+    const stack: string[] = [component.id];
+    while (stack.length > 0) {
+      const id = stack.pop()!;
+      const kids = childrenByParent.get(id) ?? [];
+      for (const k of kids) {
+        descendantIds.push(k.id);
+        stack.push(k.id);
+      }
+    }
+
+    const descendantIndicators: Indicator[] = [];
+    for (const id of [component.id, ...descendantIds]) {
+      const list = indByNode.get(id);
+      if (list) descendantIndicators.push(...list);
+    }
+
+    let onTrack = 0;
+    let atRisk = 0;
+    let offTrack = 0;
+    let progressSum = 0;
+    let progressDenom = 0;
+    for (const ind of descendantIndicators) {
+      if (ind.status === 'on_track') onTrack += 1;
+      else if (ind.status === 'at_risk') atRisk += 1;
+      else offTrack += 1;
+      const target = Number(ind.target);
+      if (target > 0) {
+        progressSum += Math.min(1, Number(ind.current_value) / target);
+        progressDenom += 1;
+      }
+    }
+
+    return {
+      id: component.id,
+      code: component.code,
+      title: component.title,
+      budget_usd:
+        component.budget_usd === null ? null : Number(component.budget_usd),
+      budget_currency: component.budget_currency,
+      indicator_count: descendantIndicators.length,
+      on_track: onTrack,
+      at_risk: atRisk,
+      off_track: offTrack,
+      progress_pct:
+        progressDenom > 0 ? Math.round((progressSum / progressDenom) * 100) : 0,
     };
   }
 

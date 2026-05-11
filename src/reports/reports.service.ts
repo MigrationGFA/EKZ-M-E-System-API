@@ -13,6 +13,16 @@ import { MailService } from '../mail/mail.service.js';
 import { AuditService } from '../audit/audit.service.js';
 import { ProjectMetaService } from '../project-meta/project-meta.service.js';
 import { expectedAt } from '../indicators/helpers/expected-progress.js';
+import { DisaggregationService } from '../indicators/disaggregation.service.js';
+import { DisaggregationAxis } from '../indicators/dto/disaggregation.dto.js';
+import { AzureStorageService } from '../storage/azure-storage.service.js';
+import { renderAfdbSupervisionPdf } from './templates/afdb-supervision.js';
+
+// Phase 9: Azure container reuse — supervision PDFs live alongside Phase 6
+// evidence documents in `wiftdocuments`, keyed under `reports/`. Single
+// container = single RBAC posture + single lifecycle policy.
+const REPORTS_CONTAINER = 'wiftdocuments';
+const REPORTS_KEY_PREFIX = 'reports';
 
 interface ProjectAnchors {
   baselineDate?: Date;
@@ -68,6 +78,45 @@ interface LogframeReportRow {
   indicators: IndicatorReportRow[];
 }
 
+// ─── Phase 9 supervision payload ────────────────────────────────────────────
+
+export interface SupervisionCover {
+  name: string;
+  sap_code: string | null;
+  pdo_text: string;
+  baseline_year: number;
+  completion_year: number;
+  midpoint_date: string | null;
+}
+
+export interface DisaggregationRollupRow {
+  axis: string;
+  total: number;
+  buckets: Record<string, number>;
+  target: Record<string, number> | null;
+  gap: Record<string, number> | null;
+}
+
+export interface ComponentReportRow {
+  id: string;
+  code: string;
+  title: string;
+  budget_usd: number | null;
+  budget_currency: string;
+  indicator_count: number;
+  on_track: number;
+  at_risk: number;
+  off_track: number;
+  progress_pct: number;
+  output_statement_codes: string[];
+}
+
+export interface SupervisionData extends ReportPreviewData {
+  cover: SupervisionCover | null;
+  components: ComponentReportRow[];
+  disaggregation_by_indicator: Record<string, DisaggregationRollupRow[]>;
+}
+
 export interface ReportPreviewData {
   meta: {
     generated_at: string;
@@ -119,6 +168,8 @@ export class ReportsService {
     private readonly mailService: MailService,
     private readonly auditService: AuditService,
     private readonly projectMetaService: ProjectMetaService,
+    private readonly disaggregationService: DisaggregationService,
+    private readonly azureStorage: AzureStorageService,
   ) {}
 
   async findAll() {
@@ -154,6 +205,29 @@ export class ReportsService {
     });
     const saved = await this.reportRepo.save(report);
 
+    // Phase 9: server-side PDF generation. Excel stays client-side — this
+    // endpoint only records metadata for non-PDF formats and the client is
+    // responsible for the XLSX download. Closes AUDIT_FINDINGS §4.4 for
+    // the PDF path.
+    let downloadUrl = '#';
+    if (format === 'pdf') {
+      const data = await this.getSupervisionData(
+        generatedBy,
+        typeof filters.date_from === 'string' ? filters.date_from : undefined,
+        typeof filters.date_to === 'string' ? filters.date_to : undefined,
+      );
+      const buffer = await renderAfdbSupervisionPdf(data);
+      const key = `${REPORTS_KEY_PREFIX}/${saved.id}.pdf`;
+      downloadUrl = await this.azureStorage.uploadDocument(
+        REPORTS_CONTAINER,
+        key,
+        buffer,
+        'application/pdf',
+      );
+      saved.download_url = downloadUrl;
+      await this.reportRepo.save(saved);
+    }
+
     void this.auditService.log({
       user_id: actorId,
       user_name: generatorEmail,
@@ -172,7 +246,7 @@ export class ReportsService {
 
     return {
       report_id: saved.id,
-      download_url: saved.download_url,
+      download_url: downloadUrl,
       format: saved.format,
     };
   }
@@ -252,6 +326,180 @@ export class ReportsService {
         verified_pct: verifiedPct,
       },
     };
+  }
+
+  /**
+   * Phase 9: aggregates everything the AfDB supervision PDF needs in one
+   * call — preview shape + cover (from project_meta) + component rollups
+   * (filtered from logframe_rows + aggregated) + per-indicator
+   * disaggregation rollups (DisaggregationService.getRollup per axis).
+   *
+   * Disaggregation loading is per (indicator, axis) — supervision is a
+   * twice-yearly cadence and the data volume is modest. If the N+M cost
+   * becomes a problem the rollup query can be batched in SQL later.
+   */
+  async getSupervisionData(
+    generatedBy: string,
+    dateFrom?: string,
+    dateTo?: string,
+  ): Promise<SupervisionData> {
+    const preview = await this.getPreviewData(generatedBy, dateFrom, dateTo);
+    const cover = await this.loadSupervisionCover();
+    const components = await this.buildComponentRows();
+    const disaggregation_by_indicator =
+      await this.loadDisaggregationByIndicator();
+
+    return {
+      ...preview,
+      cover,
+      components,
+      disaggregation_by_indicator,
+    };
+  }
+
+  private async loadSupervisionCover(): Promise<SupervisionCover | null> {
+    try {
+      const meta = await this.projectMetaService.get();
+      return {
+        name: meta.name,
+        sap_code: meta.sap_code,
+        pdo_text: meta.pdo_text,
+        baseline_year: meta.baseline_year,
+        completion_year: meta.completion_year,
+        midpoint_date: meta.midpoint_date
+          ? new Date(meta.midpoint_date).toISOString().slice(0, 10)
+          : null,
+      };
+    } catch (e) {
+      if (e instanceof NotFoundException) return null;
+      throw e;
+    }
+  }
+
+  private async buildComponentRows(): Promise<ComponentReportRow[]> {
+    const allNodes = await this.nodeRepo.find({ order: { order: 'ASC' } });
+    const components = allNodes.filter((n) => n.type === 'component');
+    if (components.length === 0) return [];
+
+    const childrenByParent = new Map<string, LogframeNode[]>();
+    for (const n of allNodes) {
+      if (!n.parent_id) continue;
+      const list = childrenByParent.get(n.parent_id) ?? [];
+      list.push(n);
+      childrenByParent.set(n.parent_id, list);
+    }
+
+    const indicators = await this.indicatorRepo.find();
+    const indByNode = new Map<string, Indicator[]>();
+    for (const ind of indicators) {
+      if (!ind.logframe_level_id) continue;
+      const list = indByNode.get(ind.logframe_level_id) ?? [];
+      list.push(ind);
+      indByNode.set(ind.logframe_level_id, list);
+    }
+
+    return components.map((c) =>
+      this.toComponentRow(c, childrenByParent, indByNode),
+    );
+  }
+
+  private toComponentRow(
+    component: LogframeNode,
+    childrenByParent: Map<string, LogframeNode[]>,
+    indByNode: Map<string, Indicator[]>,
+  ): ComponentReportRow {
+    const descendantIds = this.collectDescendantIds(
+      component.id,
+      childrenByParent,
+    );
+    const descendantIndicators: Indicator[] = [];
+    for (const id of [component.id, ...descendantIds]) {
+      const list = indByNode.get(id);
+      if (list) descendantIndicators.push(...list);
+    }
+
+    let onTrack = 0;
+    let atRisk = 0;
+    let offTrack = 0;
+    let progressSum = 0;
+    let progressDenom = 0;
+    for (const ind of descendantIndicators) {
+      if (ind.status === 'on_track') onTrack += 1;
+      else if (ind.status === 'at_risk') atRisk += 1;
+      else offTrack += 1;
+      const target = Number(ind.target);
+      if (target > 0) {
+        progressSum += Math.min(1, Number(ind.current_value) / target);
+        progressDenom += 1;
+      }
+    }
+
+    const outputStatementCodes = (childrenByParent.get(component.id) ?? [])
+      .filter(
+        (n) =>
+          n.type === 'output_statement' || n.type === 'output' /* legacy */,
+      )
+      .map((n) => n.code);
+
+    return {
+      id: component.id,
+      code: component.code,
+      title: component.title,
+      budget_usd:
+        component.budget_usd === null ? null : Number(component.budget_usd),
+      budget_currency: component.budget_currency,
+      indicator_count: descendantIndicators.length,
+      on_track: onTrack,
+      at_risk: atRisk,
+      off_track: offTrack,
+      progress_pct:
+        progressDenom > 0 ? Math.round((progressSum / progressDenom) * 100) : 0,
+      output_statement_codes: outputStatementCodes,
+    };
+  }
+
+  private collectDescendantIds(
+    rootId: string,
+    childrenByParent: Map<string, LogframeNode[]>,
+  ): string[] {
+    const result: string[] = [];
+    const stack: string[] = [rootId];
+    while (stack.length > 0) {
+      const id = stack.pop()!;
+      const kids = childrenByParent.get(id) ?? [];
+      for (const k of kids) {
+        result.push(k.id);
+        stack.push(k.id);
+      }
+    }
+    return result;
+  }
+
+  private async loadDisaggregationByIndicator(): Promise<
+    Record<string, DisaggregationRollupRow[]>
+  > {
+    const indicators = await this.indicatorRepo.find();
+    const out: Record<string, DisaggregationRollupRow[]> = {};
+    for (const ind of indicators) {
+      const rules = await this.disaggregationService.getRules(ind.id);
+      if (rules.length === 0) continue;
+      const rollups: DisaggregationRollupRow[] = [];
+      for (const rule of rules) {
+        const rollup = await this.disaggregationService.getRollup(
+          ind.id,
+          rule.axis as DisaggregationAxis,
+        );
+        rollups.push({
+          axis: rollup.axis,
+          total: rollup.total,
+          buckets: rollup.buckets,
+          target: rollup.target,
+          gap: rollup.gap,
+        });
+      }
+      out[ind.id] = rollups;
+    }
+    return out;
   }
 
   // ─── Private helpers ───────────────────────────────────────────────────────
