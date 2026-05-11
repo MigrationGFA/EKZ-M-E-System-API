@@ -435,6 +435,22 @@ export class IndicatorsService {
     indicator: Indicator,
     asOf: Date,
   ): Promise<number> {
+    return this.getExpectedForIndicator(indicator, asOf);
+  }
+
+  /**
+   * Phase 8: public variant of getExpectedAt for callers outside this
+   * service (currently SchedulerService for at-risk alerting). Loads the
+   * indicator's year-target rows and the project_meta baseline year, then
+   * delegates to the pure `expectedAt` helper.
+   *
+   * Falls back to `indicator.target` when project_meta is not yet
+   * initialised (preserves pre-Phase-3 semantics).
+   */
+  async getExpectedForIndicator(
+    indicator: Indicator,
+    asOf: Date,
+  ): Promise<number> {
     const yearTargets = await this.yearTargetsRepo.find({
       where: { indicator_id: indicator.id },
       order: { year: 'ASC' },
