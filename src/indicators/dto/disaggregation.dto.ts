@@ -83,6 +83,16 @@ export class SetDisaggregationsDto {
   rules: UpsertDisaggregationDto[];
 }
 
+export class RollupQueryDto {
+  @ApiProperty({
+    enum: DisaggregationAxis,
+    example: DisaggregationAxis.SEX,
+    description: 'Axis to aggregate over',
+  })
+  @IsEnum(DisaggregationAxis)
+  axis: DisaggregationAxis;
+}
+
 export class ProgressBreakdownDto {
   @ApiProperty({
     enum: DisaggregationAxis,
