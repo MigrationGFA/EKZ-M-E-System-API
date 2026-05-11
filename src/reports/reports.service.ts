@@ -7,6 +7,8 @@ import { IndicatorProgress } from '../indicators/indicator-progress.entity.js';
 import { IndicatorYearTarget } from '../indicators/indicator-year-target.entity.js';
 import { Submission } from '../submissions/submission.entity.js';
 import { LogframeNode } from '../logframe/logframe-node.entity.js';
+import { EvidenceDocument } from '../evidence/evidence-document.entity.js';
+import type { DocumentType } from '../evidence/evidence-document.entity.js';
 import { MailService } from '../mail/mail.service.js';
 import { AuditService } from '../audit/audit.service.js';
 import { ProjectMetaService } from '../project-meta/project-meta.service.js';
@@ -30,6 +32,13 @@ interface SubCounts {
   pending: number;
 }
 
+interface EvidenceRow {
+  id: string;
+  title: string;
+  document_type: DocumentType;
+  file_url: string;
+}
+
 interface IndicatorReportRow {
   id: string;
   code: string;
@@ -48,6 +57,7 @@ interface IndicatorReportRow {
   year_targets: YearTargetRow[];
   expected_at_now: number;
   expected_at_completion: number | null;
+  evidence: EvidenceRow[];
 }
 
 interface LogframeReportRow {
@@ -104,6 +114,8 @@ export class ReportsService {
     private readonly subRepo: Repository<Submission>,
     @InjectRepository(LogframeNode)
     private readonly nodeRepo: Repository<LogframeNode>,
+    @InjectRepository(EvidenceDocument)
+    private readonly evidenceRepo: Repository<EvidenceDocument>,
     private readonly mailService: MailService,
     private readonly auditService: AuditService,
     private readonly projectMetaService: ProjectMetaService,
@@ -181,6 +193,7 @@ export class ReportsService {
     const progressByIndicator = await this.loadProgressMap(dateFrom, dateTo);
     const subsByIndicator = await this.loadSubsByIndicatorMap(dateFrom, dateTo);
     const globalStats = await this.loadGlobalSubStats(dateFrom, dateTo);
+    const evidenceByIndicator = await this.loadEvidenceByIndicatorMap();
 
     const { totalSubs, approvedSubs, rejectedSubs, pendingSubs, offSiteSubs } =
       globalStats;
@@ -202,6 +215,7 @@ export class ReportsService {
       progressByIndicator,
       subsByIndicator,
       yearTargetsByIndicator,
+      evidenceByIndicator,
       anchors,
     );
 
@@ -334,6 +348,56 @@ export class ReportsService {
     return map;
   }
 
+  /**
+   * Map of indicator_id → evidence rows that should appear on that
+   * indicator's report row. Per the dependency-map decision:
+   *
+   *  - indicator-attached docs land on that indicator.
+   *  - progress-attached docs roll up to the indicator the progress
+   *    belongs to (via a join through indicator_progress).
+   *  - location-attached docs are intentionally excluded here — they
+   *    don't have a 1:1 mapping to indicators.
+   */
+  private async loadEvidenceByIndicatorMap(): Promise<
+    Map<string, EvidenceRow[]>
+  > {
+    const rows = await this.evidenceRepo
+      .createQueryBuilder('d')
+      .leftJoin('indicator_progress', 'p', 'p.id = d.indicator_progress_id')
+      .select([
+        'd.id           AS id',
+        'd.title        AS title',
+        'd.document_type AS document_type',
+        'd.file_url     AS file_url',
+        'COALESCE(d.indicator_id, p.indicator_id) AS indicator_id',
+      ])
+      .where('d.deleted_at IS NULL')
+      .andWhere(
+        '(d.indicator_id IS NOT NULL OR d.indicator_progress_id IS NOT NULL)',
+      )
+      .orderBy('d.uploaded_at', 'DESC')
+      .getRawMany<{
+        id: string;
+        title: string;
+        document_type: DocumentType;
+        file_url: string;
+        indicator_id: string | null;
+      }>();
+
+    const map = new Map<string, EvidenceRow[]>();
+    for (const row of rows) {
+      if (!row.indicator_id) continue;
+      if (!map.has(row.indicator_id)) map.set(row.indicator_id, []);
+      map.get(row.indicator_id)!.push({
+        id: row.id,
+        title: row.title,
+        document_type: row.document_type,
+        file_url: row.file_url,
+      });
+    }
+    return map;
+  }
+
   private async loadGlobalSubStats(dateFrom?: string, dateTo?: string) {
     type Row = {
       total: string;
@@ -368,6 +432,7 @@ export class ReportsService {
     progressByIndicator: Map<string, { date: string; value: number }[]>,
     subsByIndicator: Map<string, SubCounts>,
     yearTargetsByIndicator: Map<string, IndicatorYearTarget[]>,
+    evidenceByIndicator: Map<string, EvidenceRow[]>,
     anchors: ProjectAnchors,
   ): IndicatorReportRow {
     const target = Number(ind.target);
@@ -422,6 +487,7 @@ export class ReportsService {
       })),
       expected_at_now,
       expected_at_completion,
+      evidence: evidenceByIndicator.get(ind.id) ?? [],
     };
   }
 
@@ -431,6 +497,7 @@ export class ReportsService {
     progressByIndicator: Map<string, { date: string; value: number }[]>,
     subsByIndicator: Map<string, SubCounts>,
     yearTargetsByIndicator: Map<string, IndicatorYearTarget[]>,
+    evidenceByIndicator: Map<string, EvidenceRow[]>,
     anchors: ProjectAnchors,
   ): LogframeReportRow[] {
     const { byNode, unassigned } = this.groupIndicatorsByNode(indicators);
@@ -441,6 +508,7 @@ export class ReportsService {
         progressByIndicator,
         subsByIndicator,
         yearTargetsByIndicator,
+        evidenceByIndicator,
         anchors,
       );
 

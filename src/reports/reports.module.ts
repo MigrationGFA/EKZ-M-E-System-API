@@ -6,6 +6,7 @@ import { IndicatorProgress } from '../indicators/indicator-progress.entity.js';
 import { IndicatorYearTarget } from '../indicators/indicator-year-target.entity.js';
 import { Submission } from '../submissions/submission.entity.js';
 import { LogframeNode } from '../logframe/logframe-node.entity.js';
+import { EvidenceDocument } from '../evidence/evidence-document.entity.js';
 import { ReportsService } from './reports.service.js';
 import { ReportsController } from './reports.controller.js';
 import { UsersModule } from '../users/users.module.js';
@@ -21,6 +22,7 @@ import { ProjectMetaModule } from '../project-meta/project-meta.module.js';
       IndicatorYearTarget,
       Submission,
       LogframeNode,
+      EvidenceDocument,
     ]),
     UsersModule,
     AuditModule,

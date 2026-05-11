@@ -8,17 +8,16 @@ import { HttpExceptionFilter } from './common/filters/http-exception.filter.js';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
-    bodyParser: false,
+    // Raise the JSON body limit from express's 100kb default. File uploads
+    // go through multer (multipart) so this only covers metadata-bearing
+    // routes — 256kb is comfortable headroom while still being a tight cap.
+    // Partially addresses AUDIT_FINDINGS §3.2.
+    rawBody: false,
+    bodyParser: true,
   });
+  app.useBodyParser('json', { limit: '256kb' });
+  app.useBodyParser('urlencoded', { extended: true, limit: '256kb' });
   app.useStaticAssets(join(process.cwd(), 'uploads'), { prefix: '/uploads' });
-
-  // Raise the JSON body limit from express's 100kb default. File uploads
-  // go through multer (multipart) so this only covers metadata-bearing
-  // routes — 256kb is comfortable headroom while still being a tight cap.
-  // Partially addresses AUDIT_FINDINGS §3.2.
-  const { json, urlencoded } = await import('express');
-  app.use(json({ limit: '256kb' }));
-  app.use(urlencoded({ extended: true, limit: '256kb' }));
 
   app.setGlobalPrefix('api');
 
