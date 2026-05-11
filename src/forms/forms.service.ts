@@ -2,11 +2,14 @@ import {
   Injectable,
   NotFoundException,
   ConflictException,
+  UnprocessableEntityException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { Form } from './form.entity.js';
 import { Submission } from '../submissions/submission.entity.js';
+import { Indicator } from '../indicators/indicator.entity.js';
+import { isMappableDataSourceType } from '../indicators/constants/data-source.js';
 import { CreateFormDto } from './dto/create-form.dto.js';
 import { UpdateFormDto } from './dto/update-form.dto.js';
 import { AuditService } from '../audit/audit.service.js';
@@ -18,8 +21,47 @@ export class FormsService {
     private readonly formRepo: Repository<Form>,
     @InjectRepository(Submission)
     private readonly subRepo: Repository<Submission>,
+    @InjectRepository(Indicator)
+    private readonly indicatorRepo: Repository<Indicator>,
     private readonly auditService: AuditService,
   ) {}
+
+  /**
+   * Phase 7: a form's `field_mappings` may only reference indicators whose
+   * `data_source_type` is form-mappable (form_submission or manual). External-
+   * source indicators (external_feed, tracer_study, contractor_report,
+   * financial_statement, policy_document) get progress via manual entry or
+   * API-token posts — never via form auto-population.
+   *
+   * Throws 422 UnprocessableEntityException with a structured code so the
+   * frontend form builder can surface the offending mapping inline.
+   */
+  private async assertMappingsAllowed(
+    field_mappings: Form['field_mappings'] | undefined,
+  ): Promise<void> {
+    if (!field_mappings?.length) return;
+    const ids = Array.from(
+      new Set(field_mappings.map((m) => m.indicator_id).filter(Boolean)),
+    );
+    if (!ids.length) return;
+
+    const indicators = await this.indicatorRepo.find({
+      where: { id: In(ids) },
+      select: ['id', 'data_source_type'],
+    });
+    const offenders = indicators.filter(
+      (i) => !isMappableDataSourceType(i.data_source_type),
+    );
+    if (offenders.length === 0) return;
+
+    const first = offenders[0];
+    throw new UnprocessableEntityException({
+      message: `Indicator ${first.id} has data_source_type '${first.data_source_type}' and cannot be auto-populated from a form mapping.`,
+      code: 'EXTERNAL_INDICATOR_NOT_MAPPABLE',
+      indicator_id: first.id,
+      data_source_type: first.data_source_type,
+    });
+  }
 
   async findAll(filters: { status?: string; assigned_to?: string }) {
     const qb = this.formRepo.createQueryBuilder('f');
@@ -45,6 +87,7 @@ export class FormsService {
   }
 
   async create(dto: CreateFormDto, actorId: string, actorName: string) {
+    await this.assertMappingsAllowed(dto.field_mappings);
     const form = this.formRepo.create({
       title: dto.title,
       description: dto.description ?? '',
@@ -80,6 +123,10 @@ export class FormsService {
   ) {
     const form = await this.formRepo.findOne({ where: { id } });
     if (!form) throw new NotFoundException('Form not found');
+
+    if (dto.field_mappings !== undefined) {
+      await this.assertMappingsAllowed(dto.field_mappings);
+    }
 
     const beforeData = this.serialize(form);
 
