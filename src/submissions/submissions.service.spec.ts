@@ -10,6 +10,7 @@ import { SubmissionsService } from './submissions.service.js';
 import { Submission } from './submission.entity.js';
 import { ProjectLocation } from '../locations/project-location.entity.js';
 import { Form } from '../forms/form.entity.js';
+import { Beneficiary } from '../beneficiaries/beneficiary.entity.js';
 import { UsersService } from '../users/users.service.js';
 import { MailService } from '../mail/mail.service.js';
 import { AuditService } from '../audit/audit.service.js';
@@ -73,6 +74,12 @@ const mockFormRepo = () => ({
   }),
 });
 
+const mockBeneficiaryRepo = () => ({
+  findOne: jest.fn().mockResolvedValue(null),
+  find: jest.fn().mockResolvedValue([]),
+  findBy: jest.fn().mockResolvedValue([]),
+});
+
 const mockIndicatorsService = () => ({
   addProgress: jest.fn().mockResolvedValue(undefined),
 });
@@ -114,6 +121,10 @@ describe('SubmissionsService', () => {
           useFactory: mockLocRepo,
         },
         { provide: getRepositoryToken(Form), useFactory: mockFormRepo },
+        {
+          provide: getRepositoryToken(Beneficiary),
+          useFactory: mockBeneficiaryRepo,
+        },
         { provide: UsersService, useFactory: mockUsersService },
         { provide: MailService, useFactory: mockMailService },
         { provide: AuditService, useFactory: mockAuditService },
