@@ -28,6 +28,16 @@ export class Form {
     form_field_id: string;
     indicator_id: string;
     transform?: 'latest' | 'sum' | 'average';
+    /**
+     * Phase 5: optional disaggregation auto-mapping. When `axis` is set, the
+     * auto-created indicator_progress row carries a breakdown derived from
+     * the linked beneficiary's attribute (`beneficiary_attr`). If no
+     * beneficiary is linked or the attribute is unset, `static_bucket` is
+     * used as a fallback bucket name; otherwise the breakdown is skipped.
+     */
+    axis?: 'sex' | 'age_band' | 'cohort' | 'skill_level';
+    beneficiary_attr?: 'sex' | 'age_band' | 'cohort' | 'skill_level';
+    static_bucket?: string;
   }>;
 
   @Column({ type: 'uuid', array: true, default: '{}' })

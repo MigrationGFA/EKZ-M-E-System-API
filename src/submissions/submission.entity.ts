@@ -9,6 +9,7 @@ import {
 import { Form } from '../forms/form.entity.js';
 import { User } from '../users/user.entity.js';
 import { ProjectLocation } from '../locations/project-location.entity.js';
+import { Beneficiary } from '../beneficiaries/beneficiary.entity.js';
 
 @Entity('submissions')
 export class Submission {
@@ -44,6 +45,13 @@ export class Submission {
 
   @Column({ type: 'boolean', nullable: true })
   on_site: boolean | null;
+
+  @Column({ type: 'uuid', nullable: true })
+  beneficiary_id: string | null;
+
+  @ManyToOne(() => Beneficiary, { nullable: true })
+  @JoinColumn({ name: 'beneficiary_id' })
+  beneficiary: Beneficiary | null;
 
   @Column({ type: 'timestamptz' })
   submitted_at: Date;

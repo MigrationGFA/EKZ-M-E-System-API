@@ -18,6 +18,12 @@ import { MailService } from '../mail/mail.service.js';
 import { AuditService } from '../audit/audit.service.js';
 import { AlertsService } from '../alerts/alerts.service.js';
 import { IndicatorsService } from '../indicators/indicators.service.js';
+import { Beneficiary } from '../beneficiaries/beneficiary.entity.js';
+import {
+  DisaggregationAxis,
+  ProgressBreakdownDto,
+} from '../indicators/dto/disaggregation.dto.js';
+import { ageFromDob } from '../beneficiaries/helpers/derive-cohorts.js';
 
 @Injectable()
 export class SubmissionsService {
@@ -30,6 +36,8 @@ export class SubmissionsService {
     private readonly locRepo: Repository<ProjectLocation>,
     @InjectRepository(Form)
     private readonly formRepo: Repository<Form>,
+    @InjectRepository(Beneficiary)
+    private readonly beneficiaryRepo: Repository<Beneficiary>,
     private readonly usersService: UsersService,
     private readonly mailService: MailService,
     private readonly auditService: AuditService,
@@ -118,6 +126,7 @@ export class SubmissionsService {
       submitted_at: new Date(dto.submittedAt),
       location_id: geo.location_id,
       on_site: geo.on_site,
+      beneficiary_id: dto.beneficiaryId ?? null,
     });
 
     const saved = await this.subRepo.save(sub);
@@ -253,6 +262,7 @@ export class SubmissionsService {
       submitted_at: new Date(dto.submittedAt),
       location_id: geo.location_id,
       on_site: geo.on_site,
+      beneficiary_id: dto.beneficiaryId ?? null,
     });
 
     await this.subRepo.save(sub);
@@ -419,6 +429,20 @@ export class SubmissionsService {
 
     const submittedDate = sub.submitted_at.toISOString().split('T')[0];
 
+    // Load the linked beneficiary once if any mapping needs beneficiary
+    // attributes. Phase-4 carry-forward: applyFieldMappings now emits axis
+    // breakdowns derived from the beneficiary so the cohort/sex/age_band/
+    // skill_level disaggregation rules created in Phase 4 auto-populate.
+    const needsBeneficiary =
+      sub.beneficiary_id != null &&
+      form.field_mappings.some((m) => m.axis && m.beneficiary_attr);
+    const beneficiary = needsBeneficiary
+      ? await this.beneficiaryRepo.findOne({
+          where: { id: sub.beneficiary_id! },
+          relations: { cohorts: true },
+        })
+      : null;
+
     for (const mapping of form.field_mappings) {
       const rawValue = sub.data[mapping.form_field_id] as
         | string
@@ -433,6 +457,13 @@ export class SubmissionsService {
         typeof rawValue === 'number' ? rawValue : Number(rawValue);
       if (Number.isNaN(numValue)) continue;
 
+      const breakdowns = this.buildMappingBreakdowns(
+        mapping,
+        numValue,
+        beneficiary,
+        sub.id,
+      );
+
       try {
         await this.indicatorsService.addProgress(
           mapping.indicator_id,
@@ -441,6 +472,7 @@ export class SubmissionsService {
             date: submittedDate,
             submittedBy: actorName,
             notes: `Auto-linked from submission ${sub.id}`,
+            breakdowns: breakdowns.length > 0 ? breakdowns : undefined,
           },
           actorId,
           actorName,
@@ -450,6 +482,57 @@ export class SubmissionsService {
           `Failed to auto-link progress for indicator ${mapping.indicator_id}: ${(err as Error).message}`,
         );
       }
+    }
+  }
+
+  private buildMappingBreakdowns(
+    mapping: Form['field_mappings'][number],
+    numValue: number,
+    beneficiary: Beneficiary | null,
+    submissionId: string,
+  ): ProgressBreakdownDto[] {
+    if (!mapping.axis) return [];
+
+    const buckets = this.bucketsForMapping(mapping, beneficiary);
+    if (buckets.length === 0) {
+      if (mapping.beneficiary_attr && !beneficiary) {
+        this.logger.warn(
+          `Mapping for indicator ${mapping.indicator_id} declares axis "${mapping.axis}" but submission ${submissionId} has no linked beneficiary; emitting aggregate progress without breakdown.`,
+        );
+      }
+      return [];
+    }
+
+    const value_breakdown: Record<string, number> = {};
+    for (const bucket of buckets) {
+      value_breakdown[bucket] = numValue;
+    }
+    return [
+      {
+        axis: mapping.axis as DisaggregationAxis,
+        value_breakdown,
+      },
+    ];
+  }
+
+  private bucketsForMapping(
+    mapping: Form['field_mappings'][number],
+    beneficiary: Beneficiary | null,
+  ): string[] {
+    const fallback = mapping.static_bucket ? [mapping.static_bucket] : [];
+    if (!mapping.beneficiary_attr || !beneficiary) return fallback;
+
+    switch (mapping.beneficiary_attr) {
+      case 'sex':
+        return beneficiary.sex ? [beneficiary.sex] : [];
+      case 'age_band':
+        return ageBandBucket(beneficiary) ?? fallback;
+      case 'cohort':
+        return (beneficiary.cohorts ?? []).map((c) => c.code);
+      case 'skill_level':
+        return beneficiary.skill_level ? [beneficiary.skill_level] : [];
+      default:
+        return [];
     }
   }
 
@@ -495,4 +578,14 @@ export class SubmissionsService {
       validation_comment: s.validation_comment,
     };
   }
+}
+
+function ageBandBucket(beneficiary: Beneficiary): string[] | null {
+  if (beneficiary.age_band) return [beneficiary.age_band];
+  const age = ageFromDob(beneficiary.date_of_birth);
+  if (age === null) return null;
+  if (age < 18) return ['under_18'];
+  if (age <= 24) return ['18_24'];
+  if (age <= 34) return ['25_34'];
+  return ['35_plus'];
 }
