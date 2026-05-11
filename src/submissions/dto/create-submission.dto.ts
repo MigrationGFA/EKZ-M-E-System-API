@@ -55,4 +55,12 @@ export class CreateSubmissionDto {
   @ApiProperty({ example: '2026-04-09T10:00:00Z' })
   @IsDateString()
   submittedAt: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Optional beneficiary UUID. When set, applyFieldMappings can derive disaggregation breakdowns from the linked beneficiary attributes.',
+  })
+  @IsOptional()
+  @IsUUID()
+  beneficiaryId?: string;
 }

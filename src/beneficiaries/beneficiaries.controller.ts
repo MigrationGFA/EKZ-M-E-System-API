@@ -21,10 +21,7 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import type { Request as ExpressRequest } from 'express';
-import {
-  BeneficiariesService,
-  ActorContext,
-} from './beneficiaries.service.js';
+import { BeneficiariesService, ActorContext } from './beneficiaries.service.js';
 import { CreateBeneficiaryDto } from './dto/create-beneficiary.dto.js';
 import { UpdateBeneficiaryDto } from './dto/update-beneficiary.dto.js';
 import { BeneficiaryQueryDto } from './dto/beneficiary-query.dto.js';
@@ -55,10 +52,7 @@ export class BeneficiariesController {
   @ApiQuery({ name: 'community', required: false })
   @ApiQuery({ name: 'cohort', required: false })
   @ApiQuery({ name: 'include_inactive', required: false })
-  findAll(
-    @Query() query: BeneficiaryQueryDto,
-    @Request() req: AuthedRequest,
-  ) {
+  findAll(@Query() query: BeneficiaryQueryDto, @Request() req: AuthedRequest) {
     return this.service.findAll(query, req.user);
   }
 
