@@ -12,6 +12,7 @@ import { ReportsController } from './reports.controller.js';
 import { UsersModule } from '../users/users.module.js';
 import { AuditModule } from '../audit/audit.module.js';
 import { ProjectMetaModule } from '../project-meta/project-meta.module.js';
+import { IndicatorsModule } from '../indicators/indicators.module.js';
 
 @Module({
   imports: [
@@ -27,6 +28,7 @@ import { ProjectMetaModule } from '../project-meta/project-meta.module.js';
     UsersModule,
     AuditModule,
     ProjectMetaModule,
+    IndicatorsModule,
   ],
   controllers: [ReportsController],
   providers: [ReportsService],
