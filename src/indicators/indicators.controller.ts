@@ -1,5 +1,6 @@
 import {
   Controller,
+  ForbiddenException,
   Get,
   Post,
   Put,
@@ -11,6 +12,7 @@ import {
   HttpCode,
   HttpStatus,
   ParseUUIDPipe,
+  UseGuards,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -32,7 +34,9 @@ import {
   SetDisaggregationsDto,
 } from './dto/disaggregation.dto.js';
 import { Roles } from '../auth/roles.decorator.js';
+import { JwtOrApiTokenGuard } from '../auth/jwt-or-api-token.guard.js';
 import { UserRole } from '../common/enums/user-role.enum.js';
+import { isMappableDataSourceType } from './constants/data-source.js';
 
 @ApiTags('Indicators')
 @ApiBearerAuth('JWT')
@@ -99,29 +103,48 @@ export class IndicatorsController {
   }
 
   @Post(':id/progress')
-  @Roles(UserRole.ADMIN, UserRole.ME_STAFF, UserRole.PROGRAMME_STAFF)
+  @UseGuards(JwtOrApiTokenGuard)
+  @Roles(
+    UserRole.ADMIN,
+    UserRole.ME_STAFF,
+    UserRole.PROGRAMME_STAFF,
+    UserRole.API_TOKEN,
+  )
   @ApiOperation({
     summary: 'Log a progress entry for an indicator',
     description:
-      'Creates a new progress entry and updates the indicator current_value and status.',
+      'Creates a new progress entry and updates the indicator current_value and status. Accepts a JWT (any of admin / me_staff / programme_staff) or an API token. API tokens may only post against indicators whose data_source_type is non-mappable (external_feed / tracer_study / contractor_report / financial_statement / policy_document) — the path their data legitimately flows through.',
   })
   @ApiParam({ name: 'id', description: 'Indicator UUID' })
   @ApiResponse({
     status: 201,
     description: 'Created progress entry with updated indicator status',
   })
+  @ApiResponse({
+    status: 403,
+    description:
+      'API-token actor attempting to write to a form-mappable indicator (API_TOKEN_NOT_PERMITTED_FOR_INDICATOR).',
+  })
   @ApiResponse({ status: 404, description: 'Indicator not found' })
-  addProgress(
+  async addProgress(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: CreateProgressDto,
-    @Request() req: any,
+    @Request()
+    req: { user: { id: string; email: string; role: UserRole } },
   ) {
-    return this.indicatorsService.addProgress(
-      id,
-      dto,
-      req.user.id as string,
-      req.user.email as string,
-    );
+    const actor = req.user;
+    if (actor.role === UserRole.API_TOKEN) {
+      const indicator = await this.indicatorsService.findOne(id);
+      if (isMappableDataSourceType(indicator.data_source_type)) {
+        throw new ForbiddenException({
+          message: `API tokens may only post progress against indicators whose data_source_type is external (got '${indicator.data_source_type}').`,
+          code: 'API_TOKEN_NOT_PERMITTED_FOR_INDICATOR',
+          indicator_id: id,
+          data_source_type: indicator.data_source_type,
+        });
+      }
+    }
+    return this.indicatorsService.addProgress(id, dto, actor.id, actor.email);
   }
 
   @Get(':id/forms')

@@ -76,7 +76,7 @@ When `AZURE_STORAGE_CONNECTION_STRING` is unset, photos land in `./uploads/submi
 
 ## 2. Auth & Access Control
 
-### 2.1 API tokens cannot actually post submissions — **High** (likely broken feature)
+### 2.1 API tokens cannot actually post submissions — **High** (likely broken feature) — _Partially fixed in Phase 7_
 **Where:** [ekz-server/src/api-tokens/api-token.strategy.ts:33-37](ekz-server/src/api-tokens/api-token.strategy.ts#L33-L37), [ekz-server/src/submissions/submissions.controller.ts:79](ekz-server/src/submissions/submissions.controller.ts#L79)
 
 `ApiTokenStrategy.validate()` returns `role: 'api_token'`. But every endpoint that accepts API tokens (e.g. `POST /submissions/batch`) is decorated `@Roles(UserRole.ADMIN, UserRole.ME_STAFF, UserRole.PROGRAMME_STAFF)`. `'api_token'` is not in the `UserRole` enum, so [RolesGuard](ekz-server/src/auth/roles.guard.ts#L34) rejects every API-token-authenticated request with 403.
@@ -86,6 +86,8 @@ When `AZURE_STORAGE_CONNECTION_STRING` is unset, photos land in `./uploads/submi
 **Remediation:** Decide intent — either:
 - Add `UserRole.API_TOKEN` and update `@Roles()` lists for each token-accepting endpoint, OR
 - Have the strategy resolve to a real user (e.g. a service account) so role checks pass naturally.
+
+**Status (Phase 7, 2026-05-11):** `UserRole.API_TOKEN = 'api_token'` enum value added; strategy now returns the typed enum. `POST /indicators/:id/progress` opts in via `@Roles(..., API_TOKEN)` so external-feed integrations work (Phase 7 DoD #3). **Still outstanding:** the `POST /submissions/batch` and `POST /submissions` routes do not yet list `API_TOKEN` in their `@Roles(...)` — those remain 403 for API tokens until an explicit decision on whether form-submission posts should be token-driven. Carry forward into a focused follow-up.
 
 ### 2.2 API token validation is O(n) per request — **High** (scaling)
 **Where:** [ekz-server/src/api-tokens/api-token.strategy.ts:29-31](ekz-server/src/api-tokens/api-token.strategy.ts#L29-L31)
