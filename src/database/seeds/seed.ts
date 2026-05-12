@@ -5,6 +5,8 @@ import { seedUsers } from './users.js';
 import { seedProjectMeta } from './project-meta.js';
 import { seedLogframe } from './logframe.js';
 import { seedIndicators } from './indicators.js';
+import { seedDisaggregation } from './disaggregation.js';
+import { seedLocations } from './locations.js';
 
 dotenv.config();
 
@@ -31,6 +33,8 @@ const SEEDERS: { name: string; run: Seeder }[] = [
   { name: 'project-meta', run: seedProjectMeta },
   { name: 'logframe', run: seedLogframe },
   { name: 'indicators', run: seedIndicators },
+  { name: 'disaggregation', run: seedDisaggregation },
+  { name: 'locations', run: seedLocations },
 ];
 
 async function seed() {
