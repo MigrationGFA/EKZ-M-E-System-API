@@ -35,6 +35,30 @@ export async function rowExists(
 }
 
 /**
+ * Run an UPDATE / INSERT / DELETE and return how many rows were affected.
+ *
+ * TypeORM's DataSource.query returns `[rows, rowCount]` for write queries
+ * (length is always 2), so reading `result.length` to detect a no-op is a
+ * trap. This helper handles both shapes — the tuple form from raw write
+ * statements, and the bare row array form some drivers return — and
+ * surfaces a single integer.
+ */
+export async function execAffected(
+  ds: DataSource,
+  sql: string,
+  params: unknown[] = [],
+): Promise<number> {
+  const raw: unknown = await ds.query(sql, params);
+  if (Array.isArray(raw) && raw.length === 2 && typeof raw[1] === 'number') {
+    return raw[1];
+  }
+  if (Array.isArray(raw)) {
+    return raw.length;
+  }
+  return 0;
+}
+
+/**
  * Resolve a logframe_node id by code (and optional type). Fails fast with a
  * useful message — seed slices reference logframe codes by name, so a
  * missing parent must be surfaced loudly rather than producing a NULL FK.

@@ -2,6 +2,7 @@ import { DataSource } from 'typeorm';
 import * as dotenv from 'dotenv';
 import type { Seeder } from './helpers.js';
 import { seedUsers } from './users.js';
+import { seedProjectMeta } from './project-meta.js';
 
 dotenv.config();
 
@@ -25,6 +26,7 @@ const dataSource = new DataSource({
  */
 const SEEDERS: { name: string; run: Seeder }[] = [
   { name: 'users', run: seedUsers },
+  { name: 'project-meta', run: seedProjectMeta },
 ];
 
 async function seed() {
