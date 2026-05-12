@@ -86,6 +86,8 @@ export class ReportsController {
     if (dto.location_id) filters.location_id = dto.location_id;
     if (dto.date_from) filters.date_from = dto.date_from;
     if (dto.date_to) filters.date_to = dto.date_to;
+    if (dto.year !== undefined) filters.year = dto.year;
+    if (dto.quarter !== undefined) filters.quarter = dto.quarter;
 
     const requestingUser = await this.usersService.findById(req.user.id);
     const generatedBy: string = requestingUser?.name ?? req.user.email;

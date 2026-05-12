@@ -1,4 +1,13 @@
-import { IsString, IsOptional, IsArray, IsUUID, IsIn } from 'class-validator';
+import {
+  IsString,
+  IsOptional,
+  IsArray,
+  IsUUID,
+  IsIn,
+  IsInt,
+  Min,
+  Max,
+} from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class GenerateReportDto {
@@ -44,4 +53,26 @@ export class GenerateReportDto {
   @IsOptional()
   @IsString()
   date_to?: string;
+
+  @ApiPropertyOptional({
+    example: 2026,
+    description:
+      'Phase 9.5 — reporting year for the QPR PDF. Defaults to current year when format=pdf and omitted.',
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(2000)
+  @Max(2100)
+  year?: number;
+
+  @ApiPropertyOptional({
+    example: 2,
+    description:
+      'Phase 9.5 — reporting quarter (1-4) for the QPR PDF. Defaults to the quarter of `now` when format=pdf and omitted.',
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(4)
+  quarter?: number;
 }

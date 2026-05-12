@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, IsNull, Repository } from 'typeorm';
 import { Report } from './report.entity.js';
 import { Indicator } from '../indicators/indicator.entity.js';
 import { IndicatorProgress } from '../indicators/indicator-progress.entity.js';
@@ -16,7 +16,14 @@ import { expectedAt } from '../indicators/helpers/expected-progress.js';
 import { DisaggregationService } from '../indicators/disaggregation.service.js';
 import { DisaggregationAxis } from '../indicators/dto/disaggregation.dto.js';
 import { AzureStorageService } from '../storage/azure-storage.service.js';
-import { renderAfdbSupervisionPdf } from './templates/afdb-supervision.js';
+import { renderAfdbQprPdf } from './templates/afdb-qpr.js';
+import { ProjectFinancingSource } from '../project-financing-sources/project-financing-source.entity.js';
+import { ProjectRisk } from '../project-risks/project-risk.entity.js';
+import { ProjectCovenant } from '../compliance/covenants/project-covenant.entity.js';
+import { SafeguardMeasure } from '../compliance/safeguards/safeguard-measure.entity.js';
+import { AuditFinding } from '../compliance/audit-findings/audit-finding.entity.js';
+import { ActivityQuarterlyStatus } from '../awp-status/activity-quarterly-status.entity.js';
+import { QuarterlyReportsService } from '../quarterly-reports/quarterly-reports.service.js';
 
 // Phase 9: Azure container reuse — supervision PDFs live alongside Phase 6
 // evidence documents in `wiftdocuments`, keyed under `reports/`. Single
@@ -117,6 +124,105 @@ export interface SupervisionData extends ReportPreviewData {
   disaggregation_by_indicator: Record<string, DisaggregationRollupRow[]>;
 }
 
+// ─── Phase 9.5 QPR payload ──────────────────────────────────────────────────
+
+export interface QprCover extends SupervisionCover {
+  sector: string | null;
+  country: string;
+  executing_agency: string | null;
+  responsible_project_staff: string | null;
+  original_disbursement_deadline: string | null;
+  revised_disbursement_deadline: string | null;
+  financing_sources: {
+    source_name: string;
+    instrument: string;
+    total_approved_ua: number;
+    disbursed_ua: number;
+    disbursed_pct: number;
+  }[];
+}
+
+export interface QprRiskRow {
+  key_issue: string;
+  corrective_action: string;
+  responsibility: string;
+  deadline: string | null;
+  status: string;
+  comments: string;
+}
+
+export interface QprNarratives {
+  executive_summary: string;
+  pdo_assessment: string;
+  unanticipated_results: { category: string; text: string }[];
+  bank_performance_assessment: string;
+  borrower_performance_assessment: string;
+  cofinancier_performance_assessment: string;
+  pmt_status: string;
+  awp_planned_next_qtr: string;
+}
+
+export interface QprAwpRow {
+  node_code: string;
+  node_title: string;
+  component_code: string | null;
+  deadline: string | null;
+  status: string;
+  pct_achievement: number;
+  comments: string;
+}
+
+export interface QprComplianceBundle {
+  covenants: {
+    covenant_text: string;
+    type: string;
+    status: string;
+    comments: string;
+  }[];
+  safeguards: {
+    type: string;
+    measure_name: string;
+    total_count: number;
+    not_started_count: number;
+    ongoing_count: number;
+    completed_count: number;
+    budget_allocated_ua: number;
+    amount_disbursed_ua: number;
+    progress_pct: number;
+  }[];
+  audit_findings: {
+    year: number;
+    audit_status: string;
+    key_issue: string;
+    corrective_measures: string;
+    comments: string;
+    expected_submission_date: string | null;
+  }[];
+}
+
+export interface QprAnnex1Row {
+  output_code: string;
+  output_name: string;
+  baseline: number;
+  years: {
+    year: number;
+    original: number | null;
+    updated: number | null;
+    actual: number | null;
+  }[];
+}
+
+export interface QprData extends SupervisionData {
+  period: { year: number; quarter: number };
+  cover: QprCover | null;
+  risks: QprRiskRow[];
+  narratives: QprNarratives;
+  awp_current_qtr: QprAwpRow[];
+  awp_next_qtr: QprAwpRow[];
+  compliance: QprComplianceBundle;
+  annex1: QprAnnex1Row[];
+}
+
 export interface ReportPreviewData {
   meta: {
     generated_at: string;
@@ -170,6 +276,19 @@ export class ReportsService {
     private readonly projectMetaService: ProjectMetaService,
     private readonly disaggregationService: DisaggregationService,
     private readonly azureStorage: AzureStorageService,
+    @InjectRepository(ProjectFinancingSource)
+    private readonly financingRepo: Repository<ProjectFinancingSource>,
+    @InjectRepository(ProjectRisk)
+    private readonly risksRepo: Repository<ProjectRisk>,
+    @InjectRepository(ProjectCovenant)
+    private readonly covenantsRepo: Repository<ProjectCovenant>,
+    @InjectRepository(SafeguardMeasure)
+    private readonly safeguardsRepo: Repository<SafeguardMeasure>,
+    @InjectRepository(AuditFinding)
+    private readonly auditFindingsRepo: Repository<AuditFinding>,
+    @InjectRepository(ActivityQuarterlyStatus)
+    private readonly awpRepo: Repository<ActivityQuarterlyStatus>,
+    private readonly quarterlyReportsService: QuarterlyReportsService,
   ) {}
 
   async findAll() {
@@ -205,18 +324,33 @@ export class ReportsService {
     });
     const saved = await this.reportRepo.save(report);
 
-    // Phase 9: server-side PDF generation. Excel stays client-side — this
-    // endpoint only records metadata for non-PDF formats and the client is
-    // responsible for the XLSX download. Closes AUDIT_FINDINGS §4.4 for
-    // the PDF path.
+    // Phase 9/9.5: server-side PDF generation. Excel stays client-side —
+    // this endpoint only records metadata for non-PDF formats and the
+    // client handles the XLSX download.
+    //
+    // Phase 9.5 swaps the AfDB supervision template for the QPR template
+    // when a year+quarter are present in filters. Without year+quarter,
+    // generation defaults to the QPR shape against the current period
+    // (the supervision template is deprecated; afdb-supervision.ts stays
+    // as a re-export shim for one release cycle).
     let downloadUrl = '#';
     if (format === 'pdf') {
-      const data = await this.getSupervisionData(
+      const now = new Date();
+      const year =
+        typeof filters.year === 'number' ? filters.year : now.getUTCFullYear();
+      const quarter =
+        typeof filters.quarter === 'number'
+          ? filters.quarter
+          : Math.floor(now.getUTCMonth() / 3) + 1;
+
+      const data = await this.getQprData(
+        year,
+        quarter,
         generatedBy,
-        typeof filters.date_from === 'string' ? filters.date_from : undefined,
-        typeof filters.date_to === 'string' ? filters.date_to : undefined,
+        actorId,
+        generatorEmail,
       );
-      const buffer = await renderAfdbSupervisionPdf(data);
+      const buffer = await renderAfdbQprPdf(data);
       const key = `${REPORTS_KEY_PREFIX}/${saved.id}.pdf`;
       downloadUrl = await this.azureStorage.uploadDocument(
         REPORTS_CONTAINER,
@@ -226,6 +360,13 @@ export class ReportsService {
       );
       saved.download_url = downloadUrl;
       await this.reportRepo.save(saved);
+
+      // Stamp the QPR record's generated_at/by so admin form shows last-gen.
+      await this.quarterlyReportsService.markGenerated(
+        year,
+        quarter,
+        generatedBy,
+      );
     }
 
     void this.auditService.log({
@@ -354,6 +495,291 @@ export class ReportsService {
       cover,
       components,
       disaggregation_by_indicator,
+    };
+  }
+
+  /**
+   * Phase 9.5 — assemble the QPR payload. Extends SupervisionData with
+   * widened cover, risks register, narratives (per (year, quarter)),
+   * current + next-quarter AWP status, compliance bundle, and the
+   * Annex-1 output-projection matrix (original vs updated vs actual
+   * per year per output).
+   *
+   * Procurement (C.3 + Annexes 2-4) and Financial disbursement (C.4 +
+   * Annex 5) are deliberately not assembled here — those render as
+   * placeholders in the QPR PDF.
+   */
+  async getQprData(
+    year: number,
+    quarter: number,
+    generatedBy: string,
+    actorId: string,
+    actorName: string,
+  ): Promise<QprData> {
+    const supervision = await this.getSupervisionData(generatedBy);
+    const cover = await this.loadQprCover();
+    const risks = await this.loadActiveRisks();
+    const narratives = await this.loadNarratives(
+      year,
+      quarter,
+      actorId,
+      actorName,
+    );
+    const { current: awp_current_qtr, next: awp_next_qtr } =
+      await this.loadAwpStatus(year, quarter);
+    const compliance = await this.loadCompliance();
+    const annex1 = await this.buildAnnex1();
+
+    return {
+      ...supervision,
+      cover,
+      period: { year, quarter },
+      risks,
+      narratives,
+      awp_current_qtr,
+      awp_next_qtr,
+      compliance,
+      annex1,
+    };
+  }
+
+  private async loadQprCover(): Promise<QprCover | null> {
+    try {
+      const meta = await this.projectMetaService.get();
+      const sources = await this.financingRepo.find({
+        order: { order: 'ASC', source_name: 'ASC' },
+      });
+      return {
+        name: meta.name,
+        sap_code: meta.sap_code,
+        pdo_text: meta.pdo_text,
+        baseline_year: meta.baseline_year,
+        completion_year: meta.completion_year,
+        midpoint_date: meta.midpoint_date
+          ? new Date(meta.midpoint_date).toISOString().slice(0, 10)
+          : null,
+        sector: meta.sector,
+        country: meta.country,
+        executing_agency: meta.executing_agency,
+        responsible_project_staff: meta.responsible_project_staff,
+        original_disbursement_deadline: meta.original_disbursement_deadline
+          ? new Date(meta.original_disbursement_deadline)
+              .toISOString()
+              .slice(0, 10)
+          : null,
+        revised_disbursement_deadline: meta.revised_disbursement_deadline
+          ? new Date(meta.revised_disbursement_deadline)
+              .toISOString()
+              .slice(0, 10)
+          : null,
+        financing_sources: sources.map((s) => ({
+          source_name: s.source_name,
+          instrument: s.instrument,
+          total_approved_ua: s.total_approved_ua,
+          disbursed_ua: s.disbursed_ua,
+          disbursed_pct:
+            s.total_approved_ua > 0
+              ? Math.round((s.disbursed_ua / s.total_approved_ua) * 100)
+              : 0,
+        })),
+      };
+    } catch (e) {
+      if (e instanceof NotFoundException) return null;
+      throw e;
+    }
+  }
+
+  private async loadActiveRisks(): Promise<QprRiskRow[]> {
+    const rows = await this.risksRepo.find({
+      where: { resolved_at: IsNull() },
+      order: { deadline: 'ASC', created_at: 'DESC' },
+    });
+    return rows.map((r) => ({
+      key_issue: r.key_issue,
+      corrective_action: r.corrective_action,
+      responsibility: r.responsibility,
+      deadline: r.deadline
+        ? new Date(r.deadline).toISOString().slice(0, 10)
+        : null,
+      status: r.status,
+      comments: r.comments,
+    }));
+  }
+
+  private async loadNarratives(
+    year: number,
+    quarter: number,
+    actorId: string,
+    actorName: string,
+  ): Promise<QprNarratives> {
+    const row = await this.quarterlyReportsService.getOrCreate(
+      year,
+      quarter,
+      actorId,
+      actorName,
+    );
+    return {
+      executive_summary: row.executive_summary,
+      pdo_assessment: row.pdo_assessment,
+      unanticipated_results: row.unanticipated_results ?? [],
+      bank_performance_assessment: row.bank_performance_assessment,
+      borrower_performance_assessment: row.borrower_performance_assessment,
+      cofinancier_performance_assessment:
+        row.cofinancier_performance_assessment,
+      pmt_status: row.pmt_status,
+      awp_planned_next_qtr: row.awp_planned_next_qtr,
+    };
+  }
+
+  private async loadAwpStatus(
+    year: number,
+    quarter: number,
+  ): Promise<{ current: QprAwpRow[]; next: QprAwpRow[] }> {
+    const rows = await this.awpRepo.find({
+      where: { year, quarter },
+      order: { created_at: 'ASC' },
+    });
+    if (rows.length === 0) return { current: [], next: [] };
+    const nodeIds = Array.from(new Set(rows.map((r) => r.logframe_node_id)));
+    const nodes = await this.nodeRepo.find({ where: { id: In(nodeIds) } });
+    const nodeMap = new Map(nodes.map((n) => [n.id, n]));
+    // Build component lookup for context — walk parents to find the
+    // nearest 'component' ancestor.
+    const allNodes = await this.nodeRepo.find();
+    const allMap = new Map(allNodes.map((n) => [n.id, n]));
+    const componentCodeFor = (id: string): string | null => {
+      let cursor = allMap.get(id) ?? null;
+      let depth = 0;
+      while (cursor && depth < 10) {
+        if (cursor.type === 'component') return cursor.code;
+        cursor = cursor.parent_id
+          ? (allMap.get(cursor.parent_id) ?? null)
+          : null;
+        depth += 1;
+      }
+      return null;
+    };
+    const toRow = (r: ActivityQuarterlyStatus): QprAwpRow => {
+      const node = nodeMap.get(r.logframe_node_id);
+      return {
+        node_code: node?.code ?? '—',
+        node_title: node?.title ?? '(unknown activity)',
+        component_code: componentCodeFor(r.logframe_node_id),
+        deadline: r.deadline
+          ? new Date(r.deadline).toISOString().slice(0, 10)
+          : null,
+        status: r.status,
+        pct_achievement: r.pct_achievement,
+        comments: r.comments,
+      };
+    };
+    return {
+      current: rows.map(toRow),
+      next: rows.filter((r) => r.planned_for_next_qtr).map(toRow),
+    };
+  }
+
+  private async loadCompliance(): Promise<QprComplianceBundle> {
+    const [covenants, safeguards, findings] = await Promise.all([
+      this.covenantsRepo.find({ order: { order: 'ASC', created_at: 'ASC' } }),
+      this.safeguardsRepo.find({ order: { order: 'ASC', type: 'ASC' } }),
+      this.auditFindingsRepo.find({ order: { year: 'DESC', order: 'ASC' } }),
+    ]);
+    return {
+      covenants: covenants.map((c) => ({
+        covenant_text: c.covenant_text,
+        type: c.type,
+        status: c.status,
+        comments: c.comments,
+      })),
+      safeguards: safeguards.map((s) => ({
+        type: s.type,
+        measure_name: s.measure_name,
+        total_count: s.total_count,
+        not_started_count: s.not_started_count,
+        ongoing_count: s.ongoing_count,
+        completed_count: s.completed_count,
+        budget_allocated_ua: s.budget_allocated_ua,
+        amount_disbursed_ua: s.amount_disbursed_ua,
+        progress_pct:
+          s.total_count > 0
+            ? Math.round((s.completed_count / s.total_count) * 100)
+            : 0,
+      })),
+      audit_findings: findings.map((f) => ({
+        year: f.year,
+        audit_status: f.audit_status,
+        key_issue: f.key_issue,
+        corrective_measures: f.corrective_measures,
+        comments: f.comments,
+        expected_submission_date: f.expected_submission_date
+          ? new Date(f.expected_submission_date).toISOString().slice(0, 10)
+          : null,
+      })),
+    };
+  }
+
+  /**
+   * Annex 1 — Output-projection matrix. Per output indicator, returns
+   * a year-by-year row of {original, updated, actual}. Originals come
+   * from indicator_year_targets where is_original=true; updated from
+   * is_original=false; actuals are the latest progress entry per
+   * calendar year.
+   */
+  private async buildAnnex1(): Promise<QprAnnex1Row[]> {
+    const indicators = await this.indicatorRepo.find({
+      where: [{ kind: 'output' }, { level: 'output' }],
+      order: { code: 'ASC' },
+    });
+    if (indicators.length === 0) return [];
+    const indIds = indicators.map((i) => i.id);
+    const yearTargetRows = await this.yearTargetsRepo.find({
+      where: { indicator_id: In(indIds) },
+    });
+    const progressRows = await this.progressRepo.find({
+      where: { indicator_id: In(indIds) },
+      order: { date: 'ASC' },
+    });
+    return indicators.map((ind) =>
+      this.toAnnex1Row(ind, yearTargetRows, progressRows),
+    );
+  }
+
+  private toAnnex1Row(
+    ind: Indicator,
+    yearTargetRows: IndicatorYearTarget[],
+    progressRows: IndicatorProgress[],
+  ): QprAnnex1Row {
+    const myTargets = yearTargetRows.filter((y) => y.indicator_id === ind.id);
+    const myProgress = progressRows.filter((p) => p.indicator_id === ind.id);
+    const yearsSet = new Set<number>();
+    for (const t of myTargets) yearsSet.add(t.year);
+    for (const p of myProgress) {
+      yearsSet.add(new Date(p.date).getUTCFullYear());
+    }
+    const years = Array.from(yearsSet).sort((a, b) => a - b);
+    const yearRows = years.map((y) => {
+      const original = myTargets.find((t) => t.year === y && t.is_original);
+      const updated = myTargets.find((t) => t.year === y && !t.is_original);
+      // Actual = latest progress entry in this calendar year.
+      let actual: number | null = null;
+      for (const p of myProgress) {
+        if (new Date(p.date).getUTCFullYear() === y) {
+          actual = Number(p.value);
+        }
+      }
+      return {
+        year: y,
+        original: original ? Number(original.target_value) : null,
+        updated: updated ? Number(updated.target_value) : null,
+        actual,
+      };
+    });
+    return {
+      output_code: ind.code,
+      output_name: ind.name,
+      baseline: Number(ind.baseline),
+      years: yearRows,
     };
   }
 

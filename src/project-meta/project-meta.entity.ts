@@ -41,6 +41,26 @@ export class ProjectMeta {
   @Column({ type: 'uuid', nullable: true })
   pdo_node_id: string | null;
 
+  // ─── Phase 9.5 — QPR cover-page widening (template A.1) ───────────────
+
+  @Column({ type: 'varchar', length: 100, nullable: true })
+  sector: string | null;
+
+  @Column({ type: 'varchar', length: 100, default: 'Nigeria' })
+  country: string;
+
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  executing_agency: string | null;
+
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  responsible_project_staff: string | null;
+
+  @Column({ type: 'date', nullable: true })
+  original_disbursement_deadline: Date | null;
+
+  @Column({ type: 'date', nullable: true })
+  revised_disbursement_deadline: Date | null;
+
   @CreateDateColumn({ type: 'timestamptz' })
   created_at: Date;
 
