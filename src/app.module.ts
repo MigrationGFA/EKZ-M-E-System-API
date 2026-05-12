@@ -22,6 +22,9 @@ import { StorageModule } from './storage/storage.module.js';
 import { ProjectMetaModule } from './project-meta/project-meta.module.js';
 import { BeneficiariesModule } from './beneficiaries/beneficiaries.module.js';
 import { EvidenceModule } from './evidence/evidence.module.js';
+import { ProjectFinancingSourcesModule } from './project-financing-sources/project-financing-sources.module.js';
+import { ProjectRisksModule } from './project-risks/project-risks.module.js';
+import { ComplianceModule } from './compliance/compliance.module.js';
 
 @Module({
   imports: [
@@ -59,6 +62,9 @@ import { EvidenceModule } from './evidence/evidence.module.js';
     ProjectMetaModule,
     BeneficiariesModule,
     EvidenceModule,
+    ProjectFinancingSourcesModule,
+    ProjectRisksModule,
+    ComplianceModule,
   ],
 })
 export class AppModule {}
