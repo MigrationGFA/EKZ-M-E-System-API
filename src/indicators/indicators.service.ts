@@ -523,12 +523,19 @@ export class IndicatorsService {
   ): Promise<IndicatorYearTarget[]> {
     const allRows = await this.yearTargetsRepo.find({
       where: { indicator_id: indicatorId },
-      order: { year: 'ASC', is_original: 'ASC' },
-      // is_original=ASC puts revisions (false, 0) before originals (true, 1).
+    });
+    // Sort in-memory: revision before original per year. Independent of
+    // the DB's ORDER BY guarantees (some drivers don't honor multi-column
+    // sort on boolean columns consistently). For (year, is_original)
+    // we want revisions (false) first so the "first write wins" Map
+    // accumulator below picks them.
+    const sorted = [...allRows].sort((a, b) => {
+      if (a.year !== b.year) return a.year - b.year;
+      // false (revision) < true (original)
+      return (a.is_original ? 1 : 0) - (b.is_original ? 1 : 0);
     });
     const byYear = new Map<number, IndicatorYearTarget>();
-    for (const row of allRows) {
-      // First write wins because we ordered revisions first.
+    for (const row of sorted) {
       if (!byYear.has(row.year)) byYear.set(row.year, row);
     }
     return Array.from(byYear.values()).sort((a, b) => a.year - b.year);

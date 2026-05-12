@@ -609,14 +609,13 @@ function simpleTable(
   for (const row of rows) {
     if (doc.y > doc.page.height - PAGE_MARGIN - 20) doc.addPage();
     const rowY = doc.y;
-    let cx = tableLeft;
     let maxH = 14;
     for (let i = 0; i < row.length; i += 1) {
       const txt = String(row[i] ?? '—');
       const h = doc.heightOfString(txt, { width: widths[i] - 8 });
       maxH = Math.max(maxH, h + 6);
     }
-    cx = tableLeft;
+    let cx = tableLeft;
     for (let i = 0; i < row.length; i += 1) {
       doc.rect(cx, rowY, widths[i], maxH).stroke('#cbd5e1');
       doc.text(String(row[i] ?? '—'), cx + 4, rowY + 3, {
