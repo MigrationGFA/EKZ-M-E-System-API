@@ -4,6 +4,7 @@ import type { Seeder } from './helpers.js';
 import { seedUsers } from './users.js';
 import { seedProjectMeta } from './project-meta.js';
 import { seedLogframe } from './logframe.js';
+import { seedIndicators } from './indicators.js';
 
 dotenv.config();
 
@@ -29,6 +30,7 @@ const SEEDERS: { name: string; run: Seeder }[] = [
   { name: 'users', run: seedUsers },
   { name: 'project-meta', run: seedProjectMeta },
   { name: 'logframe', run: seedLogframe },
+  { name: 'indicators', run: seedIndicators },
 ];
 
 async function seed() {
