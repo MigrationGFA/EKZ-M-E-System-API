@@ -56,4 +56,44 @@ export class UpsertProjectMetaDto {
   @IsOptional()
   @IsUUID()
   pdo_node_id?: string | null;
+
+  // ─── Phase 9.5 — QPR cover-page widening (template A.1) ───────────────
+
+  @ApiPropertyOptional({ example: 'Knowledge Economy / ICT' })
+  @IsOptional()
+  @IsString()
+  sector?: string;
+
+  @ApiPropertyOptional({ example: 'Nigeria', default: 'Nigeria' })
+  @IsOptional()
+  @IsString()
+  country?: string;
+
+  @ApiPropertyOptional({ example: 'EKDIPA' })
+  @IsOptional()
+  @IsString()
+  executing_agency?: string;
+
+  @ApiPropertyOptional({ example: 'Dr. Olamide Ade' })
+  @IsOptional()
+  @IsString()
+  responsible_project_staff?: string;
+
+  @ApiPropertyOptional({
+    example: '2028-12-31',
+    description:
+      'Original disbursement deadline per the financing agreement (PAR).',
+  })
+  @IsOptional()
+  @IsDateString()
+  original_disbursement_deadline?: string;
+
+  @ApiPropertyOptional({
+    example: '2029-06-30',
+    description:
+      'Revised disbursement deadline after any extensions. Null if unchanged.',
+  })
+  @IsOptional()
+  @IsDateString()
+  revised_disbursement_deadline?: string;
 }

@@ -694,29 +694,140 @@ None beyond Phase 2's `data_source_type` column. This phase is pure code/UX.
 
 ---
 
+# Phase 9.5 — Quarterly Progress Report (QPR) Template
+
+**Inserted 2026-05-12** after a gap analysis comparing the Phase 9 supervision PDF against the client's preferred submission format (see `Client-Update/request.pdf`). The Phase 9 PDF covers the M&E results-framework portion well, but the AfDB Quarterly Project Progress Report template is a much broader submission document mixing M&E with risks, AWP status, compliance trackers, procurement, and financial disbursement.
+
+**Goal:** Reshape the server-rendered PDF to match the QPR template's section structure (sections A · B · C · Annexes 1–5) and close the **M&E-adjacent** data-model gaps so EKDIPA can submit the document to AfDB without manual rework in Word. **Procurement (C.3, Annexes 2–4) and Financial disbursement (C.4, Annex 5) stay out of scope** — those domains are ERP territory (SAP Ariba / Bank SAP) and duplicating them inside the M&E system creates two sources of truth. They render as **structured placeholders** with explicit "Owned by [Procurement Unit | Finance Unit]" labels and pre-allocated fields the team can fill before submission.
+
+**Why not absorb into Phase 9 or defer to Phase 11:** Phase 9 was scoped as "render what previous phases enabled" — the QPR domain introduces new entities (risks, covenants, AWP quarterly status, narratives), not just rendering. Deferring past Phase 10 (seeding) would mean re-seeding once these tables exist; cheaper to close the data model first.
+
+## Schema changes
+
+Migration `1700000000016-QprDomain.ts`.
+
+| Change | Purpose |
+|---|---|
+| **ALTER** `project_meta` — add `sector` varchar(100), `country` varchar(100) (default `'Nigeria'`), `executing_agency` varchar(255), `responsible_project_staff` varchar(255), `original_disbursement_deadline` date, `revised_disbursement_deadline` date | Cover-page widening for QPR section A.1 |
+| **NEW** `project_financing_sources` — id uuid PK, source_name varchar(255), instrument varchar(50) CHECK in (`'loan'`, `'grant'`, `'cofinancing'`, `'counterpart'`), total_approved_ua numeric(18,2), disbursed_ua numeric(18,2), order int, project_meta_id uuid FK → project_meta | A.1 financing-source/instrument table — one row per source |
+| **NEW** `project_risks` — id uuid PK, key_issue text, corrective_action text, responsibility varchar(255), deadline date, status varchar(20) CHECK in (`'pending_initiation'`, `'in_progress'`, `'finalized'`), comments text, created_at, updated_at, soft-delete via `resolved_at` timestamptz nullable | A.3 issues, challenges, risks, actions |
+| **NEW** `quarterly_progress_reports` — id uuid PK, year int, quarter int (1–4), executive_summary text, pdo_assessment text, unanticipated_results jsonb (`[{ category: 'gender'\|'climate'\|'civil_society'\|'private_sector'\|'hiv_aids'\|'other', text: string }]`), bank_performance_assessment text, borrower_performance_assessment text, cofinancier_performance_assessment text, pmt_status text, awp_planned_next_qtr text, generated_at timestamptz, generated_by varchar(255), created_at, updated_at; UNIQUE `(year, quarter)` | A.2 / B.1 / B.4 / C.5 / PMT — narrative fields keyed per quarter. UPSERT semantics so each quarter persists exactly one record. |
+| **NEW** `activity_quarterly_status` — id uuid PK, logframe_node_id uuid FK → logframe_nodes (validated at service layer to be `type='activity'`), year int, quarter int (1–4), status varchar(20) CHECK in (`'pending_initiation'`, `'in_progress'`, `'finalized'`, `'cancelled'`), pct_achievement int (0–100), comments text, planned_for_next_qtr boolean, deadline date, created_at, updated_at; UNIQUE `(logframe_node_id, year, quarter)` | C.2.1 / C.2.2 — per-activity per-quarter AWP status workflow |
+| **ALTER** `indicator_year_targets` — add `is_original` boolean default true, `revision_year` int nullable; backfill all existing rows to `is_original=true`, `revision_year=null` | Annex 1 — separates PAR-original projections from impl-updated revisions. Editing a year target inserts a new revision row (preserving original) rather than overwriting. |
+| **NEW** `project_covenants` — id uuid PK, covenant_text text, type varchar(50) CHECK in (`'entry_into_force'`, `'first_disbursement'`, `'undertaking'`), status varchar(20), comments text, order int, created_at, updated_at | C.1.1 — Bank covenants compliance |
+| **NEW** `safeguard_measures` — id uuid PK, type varchar(20) CHECK in (`'esmp'`, `'rap'`, `'other'`), measure_name varchar(255), total_count int, not_started_count int, ongoing_count int, completed_count int, budget_allocated_ua numeric(18,2), amount_disbursed_ua numeric(18,2), order int, created_at, updated_at | C.1.2 — environmental & social safeguards rollup |
+| **NEW** `audit_findings` — id uuid PK, year int, audit_status varchar(20) CHECK in (`'pending_initiation'`, `'in_progress'`, `'finalized'`), key_issue text, corrective_measures text, comments text, expected_submission_date date, order int, created_at, updated_at | C.1.3 — outstanding audits + financial-audit findings |
+
+All ALTERs are additive — no column drops, no CHECK widening that breaks existing data. The `indicator_year_targets` backfill is the only data-touching step; `is_original=true` for every pre-Phase-9.5 row is the safe default (treat all existing entries as PAR-originals until someone revises).
+
+## Code changes
+
+### Backend
+
+| Path | Change |
+|---|---|
+| `src/project-meta/project-meta.entity.ts` + DTO | Add the six new columns; `upsert()` updates them. |
+| `src/project-meta/financing-sources/` *(new sub-module)* | Service + controller for `GET/POST/PUT/DELETE /api/project-meta/financing-sources`. |
+| `src/project-risks/` *(new module)* | Standard CRUD module. `@Roles(ADMIN, ME_STAFF)`. List endpoint accepts `?status=` filter. |
+| `src/quarterly-reports/` *(new module)* | Controller routes: `GET /api/quarterly-reports?year=&quarter=`, `PUT /api/quarterly-reports/:year/:quarter` (UPSERT). |
+| `src/awp-status/` *(new module)* | `GET /api/awp-status?year=&quarter=` returns activities + their status; `PUT /api/awp-status/:nodeId/:year/:quarter` upserts a single row. Service-layer assertion that the referenced node has `type='activity'`. |
+| `src/compliance/` *(new module)* | Three services + one controller umbrella: `CovenantsService`, `SafeguardsService`, `AuditFindingsService`. Routes: `/api/compliance/covenants`, `/api/compliance/safeguards`, `/api/compliance/audit-findings`. Kept under one module so admin imports stay cohesive. |
+| `src/indicators/indicators.service.ts` | `setYearTargets()` no longer destructively replaces. Edit semantics: new row with `is_original=false`, `revision_year=<current year>`, preserving the latest-by-(year, is_original) lookup. `getYearTargets()` returns both originals and revisions sorted by year then by revision_year. New helper `getLatestYearTargets()` for the dashboard / expectedAt callers (returns the latest revision per year). |
+| `src/reports/templates/afdb-qpr.ts` *(new)* | New canonical QPR template. Section order matches request.pdf: cover (A.1) → A.2 → A.3 → B.1 → B.2 → B.3 → B.4 → C.1.1 → C.1.2 → C.1.3 → C.2.1 → C.2.2 → **placeholder block for C.3** → **placeholder block for C.4** → C.5 → Annex 1 → **placeholder blocks for Annexes 2–5**. Placeholder blocks render a labelled panel: section title, "Owned by [Procurement Unit / Finance Unit]", and a fixed-row table the team fills outside the system. |
+| `src/reports/templates/afdb-supervision.ts` | **Keep for one release cycle** as a deprecated alias re-exporting `renderAfdbQprPdf`. Drop in Phase 10 cleanup. |
+| `src/reports/reports.service.ts` | Rename `getSupervisionData()` → `getQprData(year, quarter, generatedBy)`. Returned shape extends previous with: `cover` (widened), `risks`, `narratives` (the quarterly_progress_reports row for that period), `awp_status` (activities × current quarter + next quarter), `compliance.{covenants, safeguards, audit_findings}`, `annex1` (per-output year-by-year original/updated/actual matrix). `generate()` accepts `year` + `quarter` in the DTO; defaults to current. |
+| `src/reports/reports.controller.ts` | `POST /api/reports/generate` DTO gains `year?` + `quarter?`. Swagger updated. |
+| `src/reports/dto/generate-report.dto.ts` | Add the two fields. |
+| `src/database/migrations/1700000000016-QprDomain.ts` | The migration above. Round-trip via `dist/data-source.js` per tooling_quirks. |
+
+### Frontend
+
+| Path | Change |
+|---|---|
+| `app/(dashboard)/admin/project-meta/page.tsx` | Add sector, country, executing agency, responsible staff, disbursement deadlines. Financing-source table editor (add/edit/remove rows). |
+| `app/(dashboard)/admin/risks/page.tsx` *(new)* | Risks CRUD. Status chips, deadline date picker, soft-delete via "Resolve". |
+| `app/(dashboard)/admin/compliance/page.tsx` *(new)* | Tabbed surface — Covenants · Safeguards · Audit Findings. Reuses the Tabs primitive from F-Slice 6. Each tab is a small CRUD table. |
+| `app/(dashboard)/admin/quarterly-narratives/page.tsx` *(new)* | Year + quarter selector at top. Below: the seven narrative fields (Exec Summary, PDO Assessment, Unanticipated Results × N categories, Bank Performance, Borrower Performance, Co-financier Performance, PMT Status, AWP Planned Next Quarter). Replaces the Narrative editor removed in Phase 9 F-Slice 12. |
+| `app/(dashboard)/admin/awp/page.tsx` *(new)* | Year + quarter selector; table of activity nodes (filterable by component) with status / % achievement / planned-for-next-qtr / comments. |
+| `app/(dashboard)/reports/page.tsx` | Add Year + Quarter selectors above the existing format / date range. Generate button POSTs `year + quarter`. PDF preview is removed (the live PDF link from the reports list is the source of truth now). |
+| `lib/services/` *(new files)* | `risks.ts`, `quarterlyReports.ts`, `awpStatus.ts`, `compliance.ts`. |
+| `types/` *(new files)* | `risk.ts`, `quarterlyReport.ts`, `awpStatus.ts`, `compliance.ts`. |
+| `components/admin/` | Small reusable sub-components for risks/safeguards/covenants tables. |
+| `mocks/handlers.ts` + new `mocks/qpr.ts` | MSW handlers for all six new endpoints + fixtures (1 quarterly_progress_report for current quarter, 3-5 risks, 4-6 covenants, 2 safeguard groups, 1 audit finding). |
+| `components/layout/Sidebar` | Add the four new admin entries (Risks, Compliance, AWP, Quarterly Narratives) under an "Admin / Reporting" section. |
+
+## Dependencies & risks
+
+- **Depends on** Phase 1 (project_meta), Phase 3 (year_targets), Phase 9 (PDF infrastructure + Tabs primitive).
+- **Risk — year-target edit semantics.** Changing `setYearTargets()` from destructive-replace to revision-insert is a behaviour change. The frontend YearTargetsCard must be updated to render "original (PAR)" vs "latest revision" distinctly, and the expectedAt helper must read the *latest revision* per year (not the original). Mitigation: introduce `getLatestYearTargets()` and have all existing read-paths swap to it.
+- **Risk — quarterly-report concurrent edits.** Single-admin workflow expected; v1 last-write-wins. Optimistic locking via `updated_at` is a future hardening.
+- **Risk — placeholder sections (C.3, C.4, Annexes 2–5)** may invite confusion ("why is this empty?"). Mitigation: render explicit "Owned by [team]" labels in the panel and a one-line description of what the team should fill in.
+- **Risk — sidebar grows large.** Four new admin entries on top of the existing eight. Group under a collapsible "Reporting / Compliance" section.
+
+## DoD
+
+- [ ] `pnpm seed` (Phase 10) plus a fresh QPR generation produces a PDF whose section order exactly matches `Client-Update/request.pdf` (A.1, A.2, A.3, B.1, B.2, B.3, B.4, C.1.1, C.1.2, C.1.3, C.2.1, C.2.2, [placeholder C.3], [placeholder C.4], C.5, Annex 1, [placeholders Annexes 2–5]).
+- [ ] Admin can populate every M&E-adjacent field via dashboard forms (no backend tools required).
+- [ ] Re-running `POST /api/reports/generate` for the same `(year, quarter)` updates the narrative row in place rather than creating duplicate reports metadata.
+- [ ] Editing an indicator's year targets preserves the original PAR values; the trajectory chart reflects the latest revision but the Annex 1 Output-Projections table shows Original vs Updated vs Actual.
+- [ ] Placeholder sections C.3, C.4, Annex 2–5 render with explicit ownership labels (no fields blank or misleading).
+- [ ] Sidebar adds a "Reporting" section grouping the four new admin pages; keyboard-navigable.
+- [ ] Backend test suite grows by ~10 new spec cases (QPR shape contract, AWP node-type guard, year-target revision math). Lint baseline preserved.
+- [ ] MSW handlers cover the six new endpoints; dev mode works against fixtures.
+
+## Slice plan (high-level)
+
+Two PRs, like Phase 9.
+
+**Backend (~6 slices):**
+1. Migration `1700000000016-QprDomain` + entities + project_meta widening DTO.
+2. ProjectFinancingSources + ProjectRisks + ProjectCovenants modules.
+3. SafeguardMeasures + AuditFindings + AwpQuarterlyStatus modules.
+4. QuarterlyProgressReports module + indicators year-target revision refactor (`getLatestYearTargets`).
+5. `afdb-qpr.ts` template + `getQprData()` rewrite + reports controller DTO + spec.
+6. Test spec coverage + boot smoke + AUDIT_FINDINGS annotation if any items close.
+
+**Frontend (~6 slices):**
+1. Types + services + MSW handlers.
+2. project-meta page widening.
+3. Risks admin page.
+4. Compliance admin page (three tabs).
+5. Quarterly Narratives admin page + AWP admin page.
+6. Reports page period selector + sidebar regrouping.
+
+---
+
 # Phase 10 — Seeding (preview, not in this plan's scope)
 
-This is sketched only so the structure phases above can be designed with seeding in mind.
+This is sketched only so the structure phases above can be designed with seeding in mind. **Note:** Phase 9.5 widens `project_meta` and introduces new tables (risks, covenants, safeguards, etc.); the seed order below was updated 2026-05-12 to reflect the new shape.
 
 **Inputs:**
 - The reconciled targets from Phase 0 decisions.
 - The cohort catalogue from Phase 0.
 - The Monitoring Plan + Results Framework as the source of truth for codes, names, units, methodologies.
+- The QPR-specific seed values (executing agency = "EKDIPA", country = "Nigeria", financing sources from PAR, etc.) for the Phase-9.5-widened `project_meta` columns.
 
 **Order of operations:**
-1. `project_meta` row.
-2. PDO logframe node.
-3. 4 outcome-statement nodes; 3 component nodes; 6 output-statement nodes.
-4. Cohort catalogue.
-5. ~9 outcome indicators + ~24 output indicators + 2 alignment indicators (if in scope).
-6. Year-target rows per indicator (2023, 2026, 2028 + interpolated where the docs only give two points).
-7. Disaggregation rules per indicator (sex, age, cohort where applicable).
-8. Project locations (Ago Araromi, Ijan-Ekiti, Ado-Ekiti zone, university hubs).
-9. (Optional) skeleton forms for the questionnaires the client confirms are needed.
+1. `project_meta` row with **all Phase-9.5 fields populated** — name, sap_code, sector, country='Nigeria', executing_agency='EKDIPA', responsible_project_staff, pdo_text, baseline_year=2024, completion_year=2028, midpoint_date=2026-06-30, original_disbursement_deadline, revised_disbursement_deadline.
+2. `project_financing_sources` rows (one per AfDB financing instrument + counterpart funding).
+3. PDO logframe node.
+4. 4 outcome-statement nodes; 3 component nodes; 6 output-statement nodes; activity nodes per AWP.
+5. Cohort catalogue (already in the Phase-5 migration — seed is idempotent re-run).
+6. ~9 outcome indicators + ~24 output indicators + 2 alignment indicators.
+7. Year-target rows per indicator (2023, 2026, 2028 + interpolated). **All seeded with `is_original=true`** to establish the PAR baseline; subsequent revisions are entered through the admin UI.
+8. Disaggregation rules per indicator (sex, age, cohort where applicable).
+9. Project locations (Ago Araromi, Ijan-Ekiti, Ado-Ekiti zone, university hubs).
+10. `project_covenants` from the loan/grant agreement.
+11. `safeguard_measures` skeletons (ESMP / RAP categories with zero-status until the first quarterly review).
+12. (Optional) skeleton forms for the questionnaires the client confirms are needed.
 
 **Tooling:** Either extend `ekz-server/src/database/seeds/seed.ts` with structured fixtures (TS modules per group) or build a `scripts/import-results-framework.ts` that ingests an authoritative spreadsheet and emits SQL. Recommend the latter — the client will revise targets before completion, and a re-runnable importer is cheaper than re-editing fixtures.
 
-**DoD:** A fresh DB + `pnpm seed` produces the exact AfDB structure shown in [Client-Update/RESULTS FRAMEWORK FOR EKZ.pdf](Client-Update/RESULTS%20FRAMEWORK%20FOR%20EKZ.pdf), and `GET /api/reports/preview` returns sensible numbers for every indicator with the correct expected-vs-actual lines.
+**DoD:** A fresh DB + `pnpm seed` produces:
+- The exact AfDB structure shown in [Client-Update/RESULTS FRAMEWORK FOR EKZ.pdf](Client-Update/RESULTS%20FRAMEWORK%20FOR%20EKZ.pdf) (logframe + indicators + year-targets + disaggregation rules).
+- A fully populated `project_meta` cover (Phase 9.5 fields included) so the QPR PDF cover page renders end-to-end with no placeholder text.
+- `GET /api/reports/preview` returning sensible numbers for every indicator with the correct expected-vs-actual lines.
+- `POST /api/reports/generate` for the current quarter producing a QPR PDF whose section A.1 cover, B.1 PDO, B.2 outcome, B.3 output, and Annex 1 output projections all render without manual data entry. Admin UI is still required for narratives, risks, AWP status, etc — those aren't seeded.
 
 ---
 
@@ -817,6 +928,14 @@ MSW handlers in [ekz/mocks/](ekz/mocks/) must track every backend change. Each p
        └──────────────────────┘
               │
               ▼
+       ┌──────────────────────┐
+       │ Phase 9.5            │
+       │ QPR template         │
+       │ + narratives + risks │
+       │ + compliance + AWP   │
+       └──────────────────────┘
+              │
+              ▼
        ┌────────────┐
        │ Phase 10   │
        │ Seed real  │
@@ -843,10 +962,11 @@ A realistic schedule, assuming one full-stack engineer plus part-time client lia
 | 7 | External feeds | 0.5 weeks | Mostly UX. Depends on Track A item 3. |
 | 8 | Scheduler | 0.5 weeks | Self-contained. |
 | 9 | Dashboard/reports | 2.5 weeks | The biggest UI work; PDF templating non-trivial. |
-| 10 | Seeding | 1 week | Re-runnable importer + verification report. |
-|   | **Total** | **~13–14 weeks of engineering** | Plus Phase 0's calendar gate. |
+| 9.5 | QPR template | 1.5 weeks | Inserted 2026-05-12 after client gap analysis. Migration + 5 new modules + 4 new admin pages + PDF rewrite. Procurement (C.3) and Financial disbursement (C.4) stay placeholders. |
+| 10 | Seeding | 1 week | Re-runnable importer + verification report. Updated to populate Phase 9.5 fields. |
+|   | **Total** | **~14.5–15.5 weeks of engineering** | Plus Phase 0's calendar gate. |
 
-This is structure-first. Phases 1–4 unlock the schema; Phases 5–7 unlock the data sources; Phase 9 unlocks the deliverables AfDB will see. Real seed data follows last, when there is finally a place to put it.
+This is structure-first. Phases 1–4 unlock the schema; Phases 5–7 unlock the data sources; Phase 9 unlocks the deliverables AfDB will see; Phase 9.5 reshapes the deliverable to match the client's submission template. Real seed data follows last, when there is finally a place to put it.
 
 ---
 

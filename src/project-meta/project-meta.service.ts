@@ -69,15 +69,7 @@ export class ProjectMetaService {
 
     if (existing) {
       const beforeData = this.snapshot(existing);
-      Object.assign(existing, {
-        name: dto.name,
-        sap_code: dto.sap_code ?? null,
-        pdo_text: dto.pdo_text,
-        baseline_year: dto.baseline_year,
-        completion_year: dto.completion_year,
-        midpoint_date: dto.midpoint_date ? new Date(dto.midpoint_date) : null,
-        pdo_node_id: dto.pdo_node_id ?? null,
-      });
+      Object.assign(existing, this.dtoToPersist(dto));
       const saved = await this.metaRepo.save(existing);
 
       void this.auditService.log({
@@ -93,15 +85,7 @@ export class ProjectMetaService {
       return saved;
     }
 
-    const created = this.metaRepo.create({
-      name: dto.name,
-      sap_code: dto.sap_code ?? null,
-      pdo_text: dto.pdo_text,
-      baseline_year: dto.baseline_year,
-      completion_year: dto.completion_year,
-      midpoint_date: dto.midpoint_date ? new Date(dto.midpoint_date) : null,
-      pdo_node_id: dto.pdo_node_id ?? null,
-    });
+    const created = this.metaRepo.create(this.dtoToPersist(dto));
     const saved = await this.metaRepo.save(created);
 
     void this.auditService.log({
@@ -116,6 +100,29 @@ export class ProjectMetaService {
     return saved;
   }
 
+  private dtoToPersist(dto: UpsertProjectMetaDto): Partial<ProjectMeta> {
+    return {
+      name: dto.name,
+      sap_code: dto.sap_code ?? null,
+      pdo_text: dto.pdo_text,
+      baseline_year: dto.baseline_year,
+      completion_year: dto.completion_year,
+      midpoint_date: dto.midpoint_date ? new Date(dto.midpoint_date) : null,
+      pdo_node_id: dto.pdo_node_id ?? null,
+      // Phase 9.5 — QPR cover widening
+      sector: dto.sector ?? null,
+      country: dto.country ?? 'Nigeria',
+      executing_agency: dto.executing_agency ?? null,
+      responsible_project_staff: dto.responsible_project_staff ?? null,
+      original_disbursement_deadline: dto.original_disbursement_deadline
+        ? new Date(dto.original_disbursement_deadline)
+        : null,
+      revised_disbursement_deadline: dto.revised_disbursement_deadline
+        ? new Date(dto.revised_disbursement_deadline)
+        : null,
+    };
+  }
+
   private snapshot(meta: ProjectMeta) {
     return {
       id: meta.id,
@@ -126,6 +133,12 @@ export class ProjectMetaService {
       completion_year: meta.completion_year,
       midpoint_date: meta.midpoint_date,
       pdo_node_id: meta.pdo_node_id,
+      sector: meta.sector,
+      country: meta.country,
+      executing_agency: meta.executing_agency,
+      responsible_project_staff: meta.responsible_project_staff,
+      original_disbursement_deadline: meta.original_disbursement_deadline,
+      revised_disbursement_deadline: meta.revised_disbursement_deadline,
     };
   }
 }
