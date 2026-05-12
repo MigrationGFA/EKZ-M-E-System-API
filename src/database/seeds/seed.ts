@@ -3,6 +3,7 @@ import * as dotenv from 'dotenv';
 import type { Seeder } from './helpers.js';
 import { seedUsers } from './users.js';
 import { seedProjectMeta } from './project-meta.js';
+import { seedLogframe } from './logframe.js';
 
 dotenv.config();
 
@@ -27,6 +28,7 @@ const dataSource = new DataSource({
 const SEEDERS: { name: string; run: Seeder }[] = [
   { name: 'users', run: seedUsers },
   { name: 'project-meta', run: seedProjectMeta },
+  { name: 'logframe', run: seedLogframe },
 ];
 
 async function seed() {
