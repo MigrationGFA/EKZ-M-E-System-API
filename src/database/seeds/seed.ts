@@ -7,6 +7,8 @@ import { seedLogframe } from './logframe.js';
 import { seedIndicators } from './indicators.js';
 import { seedDisaggregation } from './disaggregation.js';
 import { seedLocations } from './locations.js';
+import { seedCovenants } from './covenants.js';
+import { seedSafeguards } from './safeguards.js';
 
 dotenv.config();
 
@@ -35,6 +37,8 @@ const SEEDERS: { name: string; run: Seeder }[] = [
   { name: 'indicators', run: seedIndicators },
   { name: 'disaggregation', run: seedDisaggregation },
   { name: 'locations', run: seedLocations },
+  { name: 'covenants', run: seedCovenants },
+  { name: 'safeguards', run: seedSafeguards },
 ];
 
 async function seed() {
