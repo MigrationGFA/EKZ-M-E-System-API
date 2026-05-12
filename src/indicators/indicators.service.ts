@@ -359,11 +359,26 @@ export class IndicatorsService {
 
     const rows = await this.yearTargetsRepo.find({
       where: { indicator_id: indicatorId },
-      order: { year: 'ASC' },
+      order: { year: 'ASC', is_original: 'DESC' },
     });
     return this.serializeYearTargets(rows);
   }
 
+  /**
+   * Phase 9.5: setYearTargets now writes revision rows (is_original=false)
+   * instead of destructively replacing originals. Originals are seeded at
+   * PAR time and stay forever as the Annex 1 Output-Projections baseline.
+   *
+   * Semantics:
+   *   - For each (year) in the payload: upsert a revision row carrying
+   *     the new target_value + revision_year=<current year>.
+   *   - Years NOT in the payload but present as revisions in DB get
+   *     deleted (revert to original).
+   *   - Original rows (is_original=true) are never touched by this method.
+   *
+   * For seeding baseline values, use `setOriginalYearTargets()` — that's
+   * the admin path for "this is what the PAR said".
+   */
   async setYearTargets(
     indicatorId: string,
     dto: SetYearTargetsDto,
@@ -382,21 +397,38 @@ export class IndicatorsService {
 
     const beforeRows = await this.yearTargetsRepo.find({
       where: { indicator_id: indicatorId },
-      order: { year: 'ASC' },
+      order: { year: 'ASC', is_original: 'DESC' },
     });
 
+    const currentYear = new Date().getUTCFullYear();
     const saved = await this.indicatorRepo.manager.transaction(async (em) => {
-      await em.delete(IndicatorYearTarget, { indicator_id: indicatorId });
-      if (dto.targets.length === 0) return [] as IndicatorYearTarget[];
+      // Drop all revisions for this indicator; we'll re-insert from payload.
+      await em.delete(IndicatorYearTarget, {
+        indicator_id: indicatorId,
+        is_original: false,
+      });
+      if (dto.targets.length === 0) {
+        // Return originals so the response shape stays predictable.
+        return em.find(IndicatorYearTarget, {
+          where: { indicator_id: indicatorId },
+          order: { year: 'ASC', is_original: 'DESC' },
+        });
+      }
       const rows = dto.targets.map((t) =>
         em.create(IndicatorYearTarget, {
           indicator_id: indicatorId,
           year: t.year,
           target_value: t.target_value,
           notes: t.notes ?? null,
+          is_original: false,
+          revision_year: currentYear,
         }),
       );
-      return em.save(IndicatorYearTarget, rows);
+      await em.save(IndicatorYearTarget, rows);
+      return em.find(IndicatorYearTarget, {
+        where: { indicator_id: indicatorId },
+        order: { year: 'ASC', is_original: 'DESC' },
+      });
     });
 
     saved.sort((a, b) => a.year - b.year);
@@ -444,6 +476,10 @@ export class IndicatorsService {
    * indicator's year-target rows and the project_meta baseline year, then
    * delegates to the pure `expectedAt` helper.
    *
+   * Phase 9.5: reads the **latest revision** per year via
+   * `getLatestYearTargets`. Originals (PAR baseline) are only used as a
+   * fallback when no revision exists for that year.
+   *
    * Falls back to `indicator.target` when project_meta is not yet
    * initialised (preserves pre-Phase-3 semantics).
    */
@@ -451,10 +487,7 @@ export class IndicatorsService {
     indicator: Indicator,
     asOf: Date,
   ): Promise<number> {
-    const yearTargets = await this.yearTargetsRepo.find({
-      where: { indicator_id: indicator.id },
-      order: { year: 'ASC' },
-    });
+    const yearTargets = await this.getLatestYearTargets(indicator.id);
 
     let baselineDate: Date | undefined;
     try {
@@ -480,12 +513,36 @@ export class IndicatorsService {
     );
   }
 
+  /**
+   * Phase 9.5: returns one row per year — the revision when it exists,
+   * else the original. Used by `expectedAt` callers and any UI/report
+   * path that wants the "live" current values.
+   */
+  async getLatestYearTargets(
+    indicatorId: string,
+  ): Promise<IndicatorYearTarget[]> {
+    const allRows = await this.yearTargetsRepo.find({
+      where: { indicator_id: indicatorId },
+      order: { year: 'ASC', is_original: 'ASC' },
+      // is_original=ASC puts revisions (false, 0) before originals (true, 1).
+    });
+    const byYear = new Map<number, IndicatorYearTarget>();
+    for (const row of allRows) {
+      // First write wins because we ordered revisions first.
+      if (!byYear.has(row.year)) byYear.set(row.year, row);
+    }
+    return Array.from(byYear.values()).sort((a, b) => a.year - b.year);
+  }
+
   private serializeYearTargets(rows: IndicatorYearTarget[]) {
     return rows.map((r) => ({
+      id: r.id,
       indicator_id: r.indicator_id,
       year: r.year,
       target_value: Number(r.target_value),
       notes: r.notes,
+      is_original: r.is_original,
+      revision_year: r.revision_year,
       createdAt: r.created_at,
       updatedAt: r.updated_at,
     }));
