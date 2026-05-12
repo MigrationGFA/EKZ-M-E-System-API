@@ -225,13 +225,15 @@ const OUTPUT_STATEMENTS: NodeSpec[] = [
   },
 ];
 
-const NODES: NodeSpec[] = [
+export const NODES: NodeSpec[] = [
   PDO,
   ALIGNMENT,
   ...OUTCOMES,
   ...COMPONENTS,
   ...OUTPUT_STATEMENTS,
 ];
+
+export type { NodeSpec };
 
 async function findNodeId(
   ds: DataSource,

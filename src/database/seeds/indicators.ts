@@ -991,11 +991,14 @@ const OUTPUT_INDICATORS: IndicatorSpec[] = [
   },
 ];
 
-const ALL_INDICATORS: IndicatorSpec[] = [
+export const ALL_INDICATORS: IndicatorSpec[] = [
   ...ALIGNMENT_INDICATORS,
   ...OUTCOME_INDICATORS,
   ...OUTPUT_INDICATORS,
 ];
+
+// Re-exported for the seed spec — keeps the spec contract close to the data.
+export type { IndicatorSpec };
 
 async function upsertIndicator(
   ds: DataSource,
