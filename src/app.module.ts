@@ -25,6 +25,7 @@ import { EvidenceModule } from './evidence/evidence.module.js';
 import { ProjectFinancingSourcesModule } from './project-financing-sources/project-financing-sources.module.js';
 import { ProjectRisksModule } from './project-risks/project-risks.module.js';
 import { ComplianceModule } from './compliance/compliance.module.js';
+import { AwpStatusModule } from './awp-status/awp-status.module.js';
 
 @Module({
   imports: [
@@ -65,6 +66,7 @@ import { ComplianceModule } from './compliance/compliance.module.js';
     ProjectFinancingSourcesModule,
     ProjectRisksModule,
     ComplianceModule,
+    AwpStatusModule,
   ],
 })
 export class AppModule {}
