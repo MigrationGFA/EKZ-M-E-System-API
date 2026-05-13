@@ -9,6 +9,7 @@ import { seedDisaggregation } from './disaggregation.js';
 import { seedLocations } from './locations.js';
 import { seedCovenants } from './covenants.js';
 import { seedSafeguards } from './safeguards.js';
+import { resetAllExceptUsers } from './reset.js';
 
 dotenv.config();
 
@@ -30,7 +31,12 @@ const dataSource = new DataSource({
  *
  * See ekz-server/docs/afdb-alignment/IMPLEMENTATION_PLAN.md §Phase 10.
  */
+const RESET_REQUESTED = process.env.RESET_BEFORE_SEED === 'YES';
+
 const SEEDERS: { name: string; run: Seeder }[] = [
+  ...(RESET_REQUESTED
+    ? [{ name: 'reset (destructive)', run: resetAllExceptUsers }]
+    : []),
   { name: 'users', run: seedUsers },
   { name: 'project-meta', run: seedProjectMeta },
   { name: 'logframe', run: seedLogframe },
