@@ -8,8 +8,13 @@ export class MailService {
   private readonly logger = new Logger(MailService.name);
   private readonly transporter: Transporter;
   private readonly from: string;
+  private readonly frontendUrl: string;
 
   constructor(private readonly config: ConfigService) {
+    this.frontendUrl = this.config.get<string>(
+      'FRONTEND_URL',
+      'http://localhost:3001',
+    );
     this.from = this.config.get<string>('SMTP_FROM', 'hello@dimpified.com');
     this.transporter = nodemailer.createTransport({
       host: this.config.get<string>('SMTP_HOST'),
@@ -38,6 +43,7 @@ export class MailService {
            <li><strong>Password:</strong> ${defaultPassword}</li>
          </ul>
          <p>Please log in and change your password immediately.</p>`,
+        { label: 'Log In & Change Password', url: `${this.frontendUrl}/login` },
       ),
     );
   }
@@ -52,6 +58,7 @@ export class MailService {
          <p>An administrator has reset your password.</p>
          <p>Your new temporary password: <strong>${defaultPassword}</strong></p>
          <p>Please log in and change your password immediately.</p>`,
+        { label: 'Log In & Change Password', url: `${this.frontendUrl}/login` },
       ),
     );
   }
@@ -77,6 +84,7 @@ export class MailService {
         'Account Reactivated',
         `<p>Hi ${name},</p>
          <p>Your account on the EKZ M&amp;E System has been reactivated. You can now log in again.</p>`,
+        { label: 'Log In', url: `${this.frontendUrl}/login` },
       ),
     );
   }
@@ -95,6 +103,7 @@ export class MailService {
         `<p>Hi ${name},</p>
          <p>Your role has been changed from <strong>${oldRole}</strong> to <strong>${newRole}</strong>.</p>
          <p>Your permissions have been updated accordingly.</p>`,
+        { label: 'Log In', url: `${this.frontendUrl}/login` },
       ),
     );
   }
@@ -114,6 +123,7 @@ export class MailService {
              Reset Password
            </a>
          </p>
+         <p style="text-align:center;font-size:13px;"><a href="${this.frontendUrl}/login" style="color:#1a56db;">Go to platform login</a></p>
          <p style="font-size:13px;color:#6b7280;">Or paste this link into your browser:</p>
          <p style="word-break:break-all;font-size:13px;color:#1a56db;">${resetLink}</p>
          <p style="margin-top:24px;font-size:13px;color:#6b7280;">
@@ -132,6 +142,7 @@ export class MailService {
         `<p>Hi ${name},</p>
          <p>Your password was successfully changed.</p>
          <p>If you did not make this change, please contact your administrator immediately.</p>`,
+        { label: 'Log In', url: `${this.frontendUrl}/login` },
       ),
     );
   }
@@ -178,6 +189,7 @@ export class MailService {
            The data from this submission has been recorded in the M&amp;E system.
            No further action is required on your part.
          </p>`,
+        { label: 'View Submissions', url: `${this.frontendUrl}/submissions` },
       ),
     );
   }
@@ -233,6 +245,7 @@ export class MailService {
          <p style="font-size:13px;color:#6b7280;margin-top:16px;">
            If you believe this rejection is in error, please contact your M&amp;E supervisor directly.
          </p>`,
+        { label: 'Submit New Data', url: `${this.frontendUrl}/data-entry` },
       ),
     );
   }
@@ -253,6 +266,7 @@ export class MailService {
            <li><strong>Officer:</strong> ${officerName}</li>
          </ul>
          <p>Please review this submission for accuracy.</p>`,
+        { label: 'Review Submissions', url: `${this.frontendUrl}/submissions` },
       ),
     );
   }
@@ -271,6 +285,7 @@ export class MailService {
         `Indicator ${statusLabel}`,
         `<p>Indicator <strong>${indicatorCode}</strong> — "${indicatorName}" has moved to <strong>${newStatus}</strong>.</p>
          <p>Please review and take corrective action if needed.</p>`,
+        { label: 'View Dashboard', url: `${this.frontendUrl}/` },
       ),
     );
   }
@@ -288,6 +303,23 @@ export class MailService {
         title,
         `<p>${description}</p>
          <p><strong>Type:</strong> ${alertType}</p>`,
+        {
+          label: 'View Notifications',
+          url: `${this.frontendUrl}/notifications`,
+        },
+      ),
+    );
+  }
+
+  sendFormAssigned(to: string, name: string, formTitle: string): void {
+    void this.send(
+      to,
+      `Form Assigned: ${formTitle}`,
+      this.wrapHtml(
+        'Form Assigned',
+        `<p>Hi ${name},</p>
+         <p>You have been assigned the form '${formTitle}'. Open the EKZ M&amp;E app's Data Entry section to fill and submit this form.</p>`,
+        { label: 'Open Data Entry', url: `${this.frontendUrl}/data-entry` },
       ),
     );
   }
@@ -358,7 +390,19 @@ export class MailService {
     }
   }
 
-  private wrapHtml(title: string, body: string): string {
+  private wrapHtml(
+    title: string,
+    body: string,
+    cta?: { label: string; url: string },
+  ): string {
+    const ctaHtml = cta
+      ? `<tr>
+            <td style="padding:0 32px 24px;text-align:center;">
+              <a href="${cta.url}" style="background-color:#1a56db;color:#ffffff;padding:13px 28px;border-radius:6px;text-decoration:none;font-weight:600;font-size:15px;display:inline-block;">${cta.label}</a>
+            </td>
+          </tr>`
+      : '';
+
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -382,6 +426,7 @@ export class MailService {
               ${body}
             </td>
           </tr>
+          ${ctaHtml}
           <tr>
             <td style="background-color:#f4f4f7;padding:16px 32px;text-align:center;color:#6b7280;font-size:12px;">
               <p style="margin:0;">Ekiti Knowledge Zone — Monitoring &amp; Evaluation System</p>

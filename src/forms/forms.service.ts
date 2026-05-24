@@ -13,6 +13,9 @@ import { isMappableDataSourceType } from '../indicators/constants/data-source.js
 import { CreateFormDto } from './dto/create-form.dto.js';
 import { UpdateFormDto } from './dto/update-form.dto.js';
 import { AuditService } from '../audit/audit.service.js';
+import { AlertsService } from '../alerts/alerts.service.js';
+import { UsersService } from '../users/users.service.js';
+import { MailService } from '../mail/mail.service.js';
 
 @Injectable()
 export class FormsService {
@@ -24,6 +27,9 @@ export class FormsService {
     @InjectRepository(Indicator)
     private readonly indicatorRepo: Repository<Indicator>,
     private readonly auditService: AuditService,
+    private readonly alertsService: AlertsService,
+    private readonly usersService: UsersService,
+    private readonly mailService: MailService,
   ) {}
 
   /**
@@ -103,6 +109,8 @@ export class FormsService {
     const saved = await this.formRepo.save(form);
     const result = this.serialize(saved);
 
+    await this.notifyNewAssignees(dto.assigned_to ?? [], saved.title);
+
     void this.auditService.log({
       user_id: actorId,
       user_name: actorName,
@@ -136,6 +144,15 @@ export class FormsService {
     Object.assign(form, updates);
     const saved = await this.formRepo.save(form);
     const afterData = this.serialize(saved);
+
+    const oldAssigned = beforeData.assigned_to ?? [];
+    const newAssigned = dto.assigned_to;
+    if (newAssigned !== undefined) {
+      const newlyAddedIds = newAssigned.filter(
+        (id) => !oldAssigned.includes(id),
+      );
+      await this.notifyNewAssignees(newlyAddedIds, saved.title);
+    }
 
     void this.auditService.log({
       user_id: actorId,
@@ -175,6 +192,27 @@ export class FormsService {
       resource_id: id,
       before_data: beforeData,
     });
+  }
+
+  private async notifyNewAssignees(
+    userIds: string[],
+    formTitle: string,
+  ): Promise<void> {
+    for (const userId of userIds) {
+      const user = await this.usersService.findById(userId);
+      if (!user) continue;
+
+      void this.alertsService.create({
+        user_id: user.id,
+        user_email: user.email,
+        title: 'Form Assigned',
+        description: `You have been assigned the form "${formTitle}". Open Data Entry to submit.`,
+        type: 'form_assigned',
+        sendEmail: false,
+      });
+
+      void this.mailService.sendFormAssigned(user.email, user.name, formTitle);
+    }
   }
 
   private serialize(f: Form) {
