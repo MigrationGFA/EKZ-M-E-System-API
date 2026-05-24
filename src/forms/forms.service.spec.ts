@@ -9,6 +9,9 @@ import { Form } from './form.entity.js';
 import { Submission } from '../submissions/submission.entity.js';
 import { Indicator } from '../indicators/indicator.entity.js';
 import { AuditService } from '../audit/audit.service.js';
+import { AlertsService } from '../alerts/alerts.service.js';
+import { UsersService } from '../users/users.service.js';
+import { MailService } from '../mail/mail.service.js';
 
 // ─── Repo mocks ─────────────────────────────────────────────────────────────
 
@@ -32,6 +35,18 @@ const mockIndicatorRepo = () => ({
 
 const mockAuditService = () => ({
   log: jest.fn().mockResolvedValue(undefined),
+});
+
+const mockAlertsService = () => ({
+  create: jest.fn().mockResolvedValue({}),
+});
+
+const mockUsersService = () => ({
+  findById: jest.fn().mockResolvedValue(null),
+});
+
+const mockMailService = () => ({
+  sendFormAssigned: jest.fn(),
 });
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -72,6 +87,9 @@ describe('FormsService — assertMappingsAllowed (Phase 7)', () => {
           useFactory: mockIndicatorRepo,
         },
         { provide: AuditService, useFactory: mockAuditService },
+        { provide: AlertsService, useFactory: mockAlertsService },
+        { provide: UsersService, useFactory: mockUsersService },
+        { provide: MailService, useFactory: mockMailService },
       ],
     }).compile();
 
