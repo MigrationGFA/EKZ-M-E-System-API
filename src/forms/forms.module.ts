@@ -6,11 +6,15 @@ import { Indicator } from '../indicators/indicator.entity.js';
 import { FormsService } from './forms.service.js';
 import { FormsController } from './forms.controller.js';
 import { AuditModule } from '../audit/audit.module.js';
+import { AlertsModule } from '../alerts/alerts.module.js';
+import { UsersModule } from '../users/users.module.js';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([Form, Submission, Indicator]),
     AuditModule,
+    AlertsModule,
+    UsersModule,
   ],
   controllers: [FormsController],
   providers: [FormsService],

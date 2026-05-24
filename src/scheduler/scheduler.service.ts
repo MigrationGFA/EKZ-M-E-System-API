@@ -227,6 +227,7 @@ export class SchedulerService {
         title: titlePrefix,
         description,
         type: 'deadline',
+        sendEmail: false,
       });
       emitted += 1;
     }
@@ -261,6 +262,7 @@ export class SchedulerService {
         title: titlePrefix,
         description,
         type: 'missed_target',
+        sendEmail: false,
       });
       emitted += 1;
     }

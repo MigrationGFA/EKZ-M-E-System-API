@@ -54,6 +54,7 @@ export class AlertsService {
     title: string;
     description: string;
     type: string;
+    sendEmail?: boolean;
   }) {
     const alert = this.alertRepo.create({
       user_id: dto.user_id,
@@ -63,12 +64,14 @@ export class AlertsService {
     });
     const saved = await this.alertRepo.save(alert);
 
-    void this.mailService.sendAlertNotification(
-      dto.user_email,
-      dto.title,
-      dto.description,
-      dto.type,
-    );
+    if (dto.sendEmail !== false) {
+      void this.mailService.sendAlertNotification(
+        dto.user_email,
+        dto.title,
+        dto.description,
+        dto.type,
+      );
+    }
 
     return this.serialize(saved);
   }
