@@ -1,0 +1,32 @@
+import { User } from '../users/user.entity.js';
+import { Indicator } from '../indicators/indicator.entity.js';
+import { IndicatorProgress } from '../indicators/indicator-progress.entity.js';
+import { ProjectLocation } from '../locations/project-location.entity.js';
+export type DocumentType = 'contractor_supervision_report' | 'contractor_progress_report' | 'third_party_monitoring_report' | 'financial_statement' | 'fund_portfolio_report' | 'beneficiary_tracer_study' | 'beneficiary_assessment' | 'policy_document' | 'mou' | 'incubation_report' | 'roadshow_report' | 'rap_implementation_report' | 'ekdipa_quarterly_report' | 'ekdipa_annual_report' | 'external_data_extract' | 'photo_evidence' | 'audit_report' | 'other';
+export declare class EvidenceDocument {
+    id: string;
+    title: string;
+    description: string | null;
+    document_type: DocumentType;
+    type_metadata: Record<string, unknown>;
+    reference_period_from: string | null;
+    reference_period_to: string | null;
+    retention_until: Date | null;
+    file_url: string;
+    file_size_bytes: string;
+    mime_type: string;
+    sha256: string;
+    uploaded_by: string;
+    uploader: User;
+    uploaded_at: Date;
+    updated_at: Date;
+    deleted_at: Date | null;
+    supersedes_id: string | null;
+    supersedes: EvidenceDocument | null;
+    indicator_id: string | null;
+    indicator: Indicator | null;
+    indicator_progress_id: string | null;
+    indicator_progress: IndicatorProgress | null;
+    location_id: string | null;
+    location: ProjectLocation | null;
+}

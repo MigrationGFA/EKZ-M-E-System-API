@@ -1,0 +1,11 @@
+---
+deployment:
+  tasks:
+    - export DEPLOYPATH=/home/ekitikno/ekz-api
+    - /bin/mkdir -p $DEPLOYPATH
+    - /bin/rm -rf $DEPLOYPATH/dist
+    - /bin/cp -R dist $DEPLOYPATH/dist
+    - /bin/cp package.json $DEPLOYPATH/package.json
+    - /bin/cp app.js $DEPLOYPATH/app.js
+    - /bin/mkdir -p $DEPLOYPATH/tmp
+    - /bin/touch $DEPLOYPATH/tmp/restart.txt
