@@ -9,9 +9,16 @@ var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.User = void 0;
+exports.User = exports.UserRole = void 0;
 const typeorm_1 = require("typeorm");
-const user_role_enum_js_1 = require("../common/enums/user-role.enum.js");
+var UserRole;
+(function (UserRole) {
+    UserRole["ADMIN"] = "admin";
+    UserRole["ME_STAFF"] = "me_staff";
+    UserRole["PROGRAMME_STAFF"] = "programme_staff";
+    UserRole["VIEWER"] = "viewer";
+    UserRole["API_TOKEN"] = "api_token";
+})(UserRole || (exports.UserRole = UserRole = {}));
 let User = class User {
     id;
     email;

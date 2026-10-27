@@ -1,8 +1,9 @@
+import { Strategy } from 'passport-custom';
 import { Repository } from 'typeorm';
 import type { Request } from 'express';
 import { ApiToken } from './api-token.entity.js';
 import { UserRole } from '../common/enums/user-role.enum.js';
-declare const ApiTokenStrategy_base: new (...args: [] | [options: import("passport-custom").StrategyOptions]) => import("passport-custom") & {
+declare const ApiTokenStrategy_base: new () => Strategy & {
     validate(...args: any[]): unknown;
 };
 export declare class ApiTokenStrategy extends ApiTokenStrategy_base {

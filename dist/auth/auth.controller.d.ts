@@ -13,7 +13,7 @@ export declare class AuthController {
             id: string;
             email: string;
             name: string;
-            role: import("../common/enums/user-role.enum.js").UserRole;
+            role: import("../users/user.entity.js").UserRole;
             avatar: string | null;
             is_default_password: boolean;
         };
@@ -24,7 +24,7 @@ export declare class AuthController {
             id: string;
             email: string;
             name: string;
-            role: import("../common/enums/user-role.enum.js").UserRole;
+            role: import("../users/user.entity.js").UserRole;
             avatar: string | null;
             is_default_password: boolean;
         };

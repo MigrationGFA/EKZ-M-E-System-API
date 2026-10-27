@@ -52,7 +52,7 @@ async function bootstrap() {
         jsonDocumentUrl: 'api/docs-json',
         yamlDocumentUrl: 'api/docs-yaml',
     });
-    await app.listen(process.env.PORT ?? 3000);
+    await app.listen(process.env.PORT ?? 3009);
 }
 void bootstrap();
 //# sourceMappingURL=main.js.map

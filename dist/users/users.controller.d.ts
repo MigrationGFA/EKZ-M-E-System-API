@@ -2,7 +2,6 @@ import { UsersService } from './users.service.js';
 import { InviteUserDto } from './dto/invite-user.dto.js';
 import { UpdateRoleDto } from './dto/update-role.dto.js';
 import { AuditService } from '../audit/audit.service.js';
-import { UserRole } from '../common/enums/user-role.enum.js';
 export declare class UsersController {
     private readonly usersService;
     private readonly auditService;
@@ -12,7 +11,7 @@ export declare class UsersController {
             id: string;
             email: string;
             name: string;
-            role: UserRole;
+            role: import("./user.entity.js").UserRole;
             avatar: string | null;
             active: boolean;
             is_default_password: boolean;
@@ -28,7 +27,7 @@ export declare class UsersController {
         id: string;
         email: string;
         name: string;
-        role: UserRole;
+        role: import("./user.entity.js").UserRole;
         avatar: string | null;
         active: boolean;
         is_default_password: boolean;
@@ -46,7 +45,7 @@ export declare class UsersController {
         id: string;
         email: string;
         name: string;
-        role: UserRole;
+        role: import("./user.entity.js").UserRole;
         avatar: string | null;
         active: boolean;
         is_default_password: boolean;
@@ -61,7 +60,7 @@ export declare class UsersController {
         id: string;
         email: string;
         name: string;
-        role: UserRole;
+        role: import("./user.entity.js").UserRole;
         avatar: string | null;
         active: boolean;
         is_default_password: boolean;
@@ -72,7 +71,7 @@ export declare class UsersController {
         id: string;
         email: string;
         name: string;
-        role: UserRole;
+        role: import("./user.entity.js").UserRole;
         avatar: string | null;
         active: boolean;
         is_default_password: boolean;

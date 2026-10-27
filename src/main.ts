@@ -80,6 +80,6 @@ async function bootstrap() {
     yamlDocumentUrl: 'api/docs-yaml',
   });
 
-  await app.listen(process.env.PORT ?? 3000);
+  await app.listen(process.env.PORT ?? 3009);
 }
 void bootstrap();

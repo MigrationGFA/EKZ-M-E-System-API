@@ -1,6 +1,5 @@
 import { Repository } from 'typeorm';
 import { User } from './user.entity.js';
-import { UserRole } from '../common/enums/user-role.enum.js';
 import { MailService } from '../mail/mail.service.js';
 export declare class UsersService {
     private readonly usersRepo;
@@ -20,7 +19,7 @@ export declare class UsersService {
             id: string;
             email: string;
             name: string;
-            role: UserRole;
+            role: import("./user.entity.js").UserRole;
             avatar: string | null;
             active: boolean;
             is_default_password: boolean;
@@ -43,7 +42,7 @@ export declare class UsersService {
         id: string;
         email: string;
         name: string;
-        role: UserRole;
+        role: import("./user.entity.js").UserRole;
         avatar: string | null;
         active: boolean;
         is_default_password: boolean;
@@ -55,20 +54,20 @@ export declare class UsersService {
             id: string;
             email: string;
             name: string;
-            role: UserRole;
+            role: import("./user.entity.js").UserRole;
             avatar: string | null;
             active: boolean;
             is_default_password: boolean;
             lastLogin: Date | null;
             createdAt: Date;
         };
-        oldRole: UserRole;
+        oldRole: import("./user.entity.js").UserRole;
     }>;
     deactivate(id: string, requestingUserId: string): Promise<{
         id: string;
         email: string;
         name: string;
-        role: UserRole;
+        role: import("./user.entity.js").UserRole;
         avatar: string | null;
         active: boolean;
         is_default_password: boolean;
@@ -79,7 +78,7 @@ export declare class UsersService {
         id: string;
         email: string;
         name: string;
-        role: UserRole;
+        role: import("./user.entity.js").UserRole;
         avatar: string | null;
         active: boolean;
         is_default_password: boolean;

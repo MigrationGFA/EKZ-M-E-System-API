@@ -17,7 +17,7 @@ export declare class JwtStrategy extends JwtStrategy_base {
     validate(payload: JwtPayload): Promise<{
         id: string;
         email: string;
-        role: import("../common/enums/user-role.enum.js").UserRole;
+        role: import("../users/user.entity.js").UserRole;
     }>;
 }
 export {};

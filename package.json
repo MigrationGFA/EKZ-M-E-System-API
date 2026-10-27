@@ -22,7 +22,8 @@
     "migration:generate": "pnpm typeorm migration:generate -d src/data-source.ts",
     "migration:run": "pnpm typeorm migration:run -d src/data-source.ts",
     "migration:revert": "pnpm typeorm migration:revert -d src/data-source.ts",
-    "seed": "nest build && node dist/database/seeds/seed.js"
+    "seed": "nest build && node dist/database/seeds/seed.js",
+    "test:prod": "node dist/main && echo 'App started successfully'"
   },
   "dependencies": {
     "@azure/storage-blob": "^12.31.0",
