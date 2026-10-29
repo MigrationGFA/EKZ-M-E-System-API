@@ -3,12 +3,25 @@ import * as dotenv from 'dotenv';
 
 dotenv.config();
 
-const url = process.env.DATABASE_URL;
+// Use individual DB env vars (compatible with cPanel/Passenger)
+const dbHost = process.env.DB_HOST || 'localhost';
+const dbPort = process.env.DB_PORT || '5432';
+const dbUser = process.env.DB_USER || 'ekitikno_ekzuser';
+const dbPassword = process.env.DB_PASSWORD || '';
+const dbName = process.env.DB_NAME || 'ekitikno_ekz';
+
+const DATABASE_URL = process.env.DATABASE_URL ||
+  `postgresql://${dbUser}:${dbPassword}@${dbHost}:${dbPort}/${dbName}`;
 
 export default new DataSource({
   type: 'postgres',
-  url,
-  // Explicitly list all entities to avoid module resolution order issues
+  url: DATABASE_URL,
+  // Migrations path pointing to compiled dist folder
+  migrations: [__dirname + '/database/migrations/*.js'],
+  synchronize: false,
+  // Run migrations on startup
+  migrationsRun: true,
+  // Explicitly list entities to avoid module resolution order issues
   entities: [
     __dirname + '/users/user.entity.ts',
     __dirname + '/alerts/alert.entity.ts',
@@ -36,7 +49,6 @@ export default new DataSource({
     __dirname + '/quarterly-reports/quarterly-progress-report.entity.ts',
     __dirname + '/reports/report.entity.ts',
     __dirname + '/submissions/submission.entity.ts',
+    __dirname + '/users/user.entity.ts',
   ],
-  migrations: [__dirname + '/database/migrations/*{.ts,.js}'],
-  synchronize: false,
 });
