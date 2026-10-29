@@ -49,7 +49,7 @@ export class QprDomain_1700000000016 implements MigrationInterface {
     // ─── project_financing_sources ───────────────────────────────────────
     await queryRunner.query(`
       CREATE TABLE IF NOT EXISTS project_financing_sources (
-        id                  UUID          PRIMARY KEY DEFAULT uuid_generate_v4(),
+        id                  UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
         project_meta_id     UUID          NOT NULL REFERENCES project_meta(id) ON DELETE CASCADE,
         source_name         VARCHAR(255)  NOT NULL,
         instrument          VARCHAR(50)   NOT NULL,
@@ -70,7 +70,7 @@ export class QprDomain_1700000000016 implements MigrationInterface {
     // ─── project_risks ───────────────────────────────────────────────────
     await queryRunner.query(`
       CREATE TABLE IF NOT EXISTS project_risks (
-        id                UUID         PRIMARY KEY DEFAULT uuid_generate_v4(),
+        id                UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
         key_issue         TEXT         NOT NULL,
         corrective_action TEXT         NOT NULL DEFAULT '',
         responsibility    VARCHAR(255) NOT NULL DEFAULT '',
@@ -92,7 +92,7 @@ export class QprDomain_1700000000016 implements MigrationInterface {
     // ─── quarterly_progress_reports ──────────────────────────────────────
     await queryRunner.query(`
       CREATE TABLE IF NOT EXISTS quarterly_progress_reports (
-        id                                  UUID         PRIMARY KEY DEFAULT uuid_generate_v4(),
+        id                                  UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
         year                                INTEGER      NOT NULL,
         quarter                             INTEGER      NOT NULL,
         executive_summary                   TEXT         NOT NULL DEFAULT '',
@@ -116,7 +116,7 @@ export class QprDomain_1700000000016 implements MigrationInterface {
     // logframe_node_id is FK; service layer asserts node.type='activity'.
     await queryRunner.query(`
       CREATE TABLE IF NOT EXISTS activity_quarterly_status (
-        id                    UUID         PRIMARY KEY DEFAULT uuid_generate_v4(),
+        id                    UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
         logframe_node_id      UUID         NOT NULL REFERENCES logframe_nodes(id) ON DELETE CASCADE,
         year                  INTEGER      NOT NULL,
         quarter               INTEGER      NOT NULL,
@@ -148,13 +148,13 @@ export class QprDomain_1700000000016 implements MigrationInterface {
       ALTER TABLE indicator_year_targets
         ADD COLUMN IF NOT EXISTS is_original BOOLEAN NOT NULL DEFAULT true,
         ADD COLUMN IF NOT EXISTS revision_year INTEGER,
-        ADD COLUMN IF NOT EXISTS id UUID DEFAULT uuid_generate_v4()
+        ADD COLUMN IF NOT EXISTS id UUID DEFAULT gen_random_uuid()
     `);
     // Make sure existing rows have non-null ids (they should from the default),
     // then promote id to PRIMARY KEY.
     await queryRunner.query(`
       UPDATE indicator_year_targets
-        SET id = uuid_generate_v4()
+        SET id = gen_random_uuid()
         WHERE id IS NULL
     `);
     await queryRunner.query(`
@@ -174,7 +174,7 @@ export class QprDomain_1700000000016 implements MigrationInterface {
     // ─── project_covenants ───────────────────────────────────────────────
     await queryRunner.query(`
       CREATE TABLE IF NOT EXISTS project_covenants (
-        id            UUID         PRIMARY KEY DEFAULT uuid_generate_v4(),
+        id            UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
         covenant_text TEXT         NOT NULL,
         type          VARCHAR(50)  NOT NULL,
         status        VARCHAR(20)  NOT NULL DEFAULT 'pending_initiation',
@@ -192,7 +192,7 @@ export class QprDomain_1700000000016 implements MigrationInterface {
     // ─── safeguard_measures ──────────────────────────────────────────────
     await queryRunner.query(`
       CREATE TABLE IF NOT EXISTS safeguard_measures (
-        id                   UUID          PRIMARY KEY DEFAULT uuid_generate_v4(),
+        id                   UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
         type                 VARCHAR(20)   NOT NULL,
         measure_name         VARCHAR(255)  NOT NULL,
         total_count          INTEGER       NOT NULL DEFAULT 0,
@@ -212,7 +212,7 @@ export class QprDomain_1700000000016 implements MigrationInterface {
     // ─── audit_findings ──────────────────────────────────────────────────
     await queryRunner.query(`
       CREATE TABLE IF NOT EXISTS audit_findings (
-        id                         UUID         PRIMARY KEY DEFAULT uuid_generate_v4(),
+        id                         UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
         year                       INTEGER      NOT NULL,
         audit_status               VARCHAR(20)  NOT NULL DEFAULT 'pending_initiation',
         key_issue                  TEXT         NOT NULL,

@@ -25,7 +25,7 @@ export class IndicatorDisaggregation_1700000000013 implements MigrationInterface
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`
       CREATE TABLE IF NOT EXISTS indicator_disaggregations (
-        id               UUID         PRIMARY KEY DEFAULT uuid_generate_v4(),
+        id               UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
         indicator_id     UUID         NOT NULL REFERENCES indicators(id) ON DELETE CASCADE,
         axis             VARCHAR(40)  NOT NULL,
         required         BOOLEAN      NOT NULL DEFAULT TRUE,

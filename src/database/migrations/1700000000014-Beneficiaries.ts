@@ -26,7 +26,7 @@ export class Beneficiaries_1700000000014 implements MigrationInterface {
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`
       CREATE TABLE IF NOT EXISTS beneficiaries (
-        id               UUID         PRIMARY KEY DEFAULT uuid_generate_v4(),
+        id               UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
         full_name        VARCHAR(255) NOT NULL,
         sex              VARCHAR(10)  NOT NULL,
         date_of_birth    DATE,
@@ -79,7 +79,7 @@ export class Beneficiaries_1700000000014 implements MigrationInterface {
 
     await queryRunner.query(`
       CREATE TABLE IF NOT EXISTS cohorts (
-        id          UUID         PRIMARY KEY DEFAULT uuid_generate_v4(),
+        id          UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
         code        VARCHAR(64)  UNIQUE NOT NULL,
         name        VARCHAR(255) NOT NULL,
         description TEXT,
@@ -106,7 +106,7 @@ export class Beneficiaries_1700000000014 implements MigrationInterface {
     // read-shaped (reason, request_id, ip_address, user_agent).
     await queryRunner.query(`
       CREATE TABLE IF NOT EXISTS pii_access_log (
-        id             UUID         PRIMARY KEY DEFAULT uuid_generate_v4(),
+        id             UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
         user_id        UUID         NOT NULL REFERENCES users(id),
         user_email     VARCHAR(255) NOT NULL,
         beneficiary_id UUID         REFERENCES beneficiaries(id),

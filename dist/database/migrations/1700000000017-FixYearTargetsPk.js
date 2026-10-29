@@ -5,11 +5,11 @@ class FixYearTargetsPk_1700000000017 {
     async up(queryRunner) {
         await queryRunner.query(`
       ALTER TABLE indicator_year_targets
-        ADD COLUMN IF NOT EXISTS id UUID DEFAULT uuid_generate_v4()
+        ADD COLUMN IF NOT EXISTS id UUID DEFAULT gen_random_uuid()
     `);
         await queryRunner.query(`
       UPDATE indicator_year_targets
-        SET id = uuid_generate_v4()
+        SET id = gen_random_uuid()
         WHERE id IS NULL
     `);
         await queryRunner.query(`

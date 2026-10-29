@@ -10,7 +10,8 @@ const dbUser = process.env.DB_USER || 'ekitikno_ekzuser';
 const dbPassword = process.env.DB_PASSWORD || '';
 const dbName = process.env.DB_NAME || 'ekitikno_ekz';
 
-const DATABASE_URL = process.env.DATABASE_URL ||
+const DATABASE_URL =
+  process.env.DATABASE_URL ||
   `postgresql://${dbUser}:${dbPassword}@${dbHost}:${dbPort}/${dbName}`;
 
 export default new DataSource({
@@ -21,6 +22,9 @@ export default new DataSource({
   synchronize: false,
   // Run migrations on startup
   migrationsRun: true,
+  uuidExtension: 'pgcrypto',
+  installExtensions: false,
+  // retryAttempts: 3,
   // Explicitly list entities to avoid module resolution order issues
   entities: [
     __dirname + '/users/user.entity.ts',

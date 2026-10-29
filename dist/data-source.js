@@ -49,6 +49,8 @@ exports.default = new typeorm_1.DataSource({
     migrations: [__dirname + '/database/migrations/*.js'],
     synchronize: false,
     migrationsRun: true,
+    uuidExtension: 'pgcrypto',
+    installExtensions: false,
     entities: [
         __dirname + '/users/user.entity.ts',
         __dirname + '/alerts/alert.entity.ts',

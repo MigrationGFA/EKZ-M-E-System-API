@@ -5,7 +5,7 @@ class EvidenceDocuments_1700000000015 {
     async up(queryRunner) {
         await queryRunner.query(`
       CREATE TABLE IF NOT EXISTS evidence_documents (
-        id                    UUID         PRIMARY KEY DEFAULT uuid_generate_v4(),
+        id                    UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
         title                 VARCHAR(500) NOT NULL,
         description           TEXT,
         document_type         VARCHAR(50)  NOT NULL,

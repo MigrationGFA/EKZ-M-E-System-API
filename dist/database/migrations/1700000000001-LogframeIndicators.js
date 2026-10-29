@@ -5,7 +5,7 @@ class LogframeIndicators1700000000001 {
     async up(queryRunner) {
         await queryRunner.query(`
       CREATE TABLE logframe_nodes (
-        id           UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+        id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         logframe_id  VARCHAR(50) NOT NULL DEFAULT 'lf_1',
         type         VARCHAR(20) NOT NULL CHECK (type IN ('goal','outcome','output','activity')),
         code         VARCHAR(50) NOT NULL,
@@ -19,7 +19,7 @@ class LogframeIndicators1700000000001 {
     `);
         await queryRunner.query(`
       CREATE TABLE indicators (
-        id                    UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+        id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         code                  VARCHAR(50) UNIQUE NOT NULL,
         name                  VARCHAR(500) NOT NULL,
         description           TEXT NOT NULL,
@@ -40,7 +40,7 @@ class LogframeIndicators1700000000001 {
     `);
         await queryRunner.query(`
       CREATE TABLE indicator_progress (
-        id            UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+        id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         indicator_id  UUID NOT NULL REFERENCES indicators(id) ON DELETE CASCADE,
         value         NUMERIC NOT NULL,
         date          TIMESTAMPTZ NOT NULL,

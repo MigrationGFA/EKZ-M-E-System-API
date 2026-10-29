@@ -4,7 +4,7 @@ export class FormsSubmissionsLocations1700000000002 implements MigrationInterfac
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`
       CREATE TABLE forms (
-        id            UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+        id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         title         VARCHAR(500) NOT NULL,
         description   TEXT NOT NULL DEFAULT '',
         fields        JSONB NOT NULL DEFAULT '[]',
@@ -19,7 +19,7 @@ export class FormsSubmissionsLocations1700000000002 implements MigrationInterfac
 
     await queryRunner.query(`
       CREATE TABLE project_locations (
-        id            UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+        id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         name          VARCHAR(255) NOT NULL,
         sector        VARCHAR(100) NOT NULL,
         description   TEXT,

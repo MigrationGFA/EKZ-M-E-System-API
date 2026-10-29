@@ -5,7 +5,7 @@ class AlertsAuditLog1700000000003 {
     async up(queryRunner) {
         await queryRunner.query(`
       CREATE TABLE alerts (
-        id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+        id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         user_id     UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
         title       VARCHAR(255) NOT NULL,
         description TEXT NOT NULL,
@@ -16,7 +16,7 @@ class AlertsAuditLog1700000000003 {
     `);
         await queryRunner.query(`
       CREATE TABLE audit_log (
-        id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+        id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         user_id     UUID NOT NULL,
         user_name   VARCHAR(255) NOT NULL,
         action      VARCHAR(20) NOT NULL CHECK (action IN ('create','update','delete','login','logout','submit')),

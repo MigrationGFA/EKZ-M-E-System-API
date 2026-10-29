@@ -21,15 +21,15 @@ export class FixYearTargetsPk_1700000000017 implements MigrationInterface {
     // 1. Add `id` column if not yet present.
     await queryRunner.query(`
       ALTER TABLE indicator_year_targets
-        ADD COLUMN IF NOT EXISTS id UUID DEFAULT uuid_generate_v4()
+        ADD COLUMN IF NOT EXISTS id UUID DEFAULT gen_random_uuid()
     `);
 
-    // 2. Backfill any null ids (defensive — uuid_generate_v4() should
+    // 2. Backfill any null ids (defensive — gen_random_uuid() should
     //    have filled new rows, but old rows may have been inserted
     //    between the column add and a later default-set).
     await queryRunner.query(`
       UPDATE indicator_year_targets
-        SET id = uuid_generate_v4()
+        SET id = gen_random_uuid()
         WHERE id IS NULL
     `);
 

@@ -44,7 +44,7 @@ export class LogframeHierarchyV2_1700000000010 implements MigrationInterface {
 
     await queryRunner.query(`
       CREATE TABLE IF NOT EXISTS project_meta (
-        id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+        id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         name            VARCHAR(255) NOT NULL,
         sap_code        VARCHAR(50),
         pdo_text        TEXT NOT NULL,

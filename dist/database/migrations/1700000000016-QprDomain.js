@@ -14,7 +14,7 @@ class QprDomain_1700000000016 {
     `);
         await queryRunner.query(`
       CREATE TABLE IF NOT EXISTS project_financing_sources (
-        id                  UUID          PRIMARY KEY DEFAULT uuid_generate_v4(),
+        id                  UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
         project_meta_id     UUID          NOT NULL REFERENCES project_meta(id) ON DELETE CASCADE,
         source_name         VARCHAR(255)  NOT NULL,
         instrument          VARCHAR(50)   NOT NULL,
@@ -33,7 +33,7 @@ class QprDomain_1700000000016 {
     `);
         await queryRunner.query(`
       CREATE TABLE IF NOT EXISTS project_risks (
-        id                UUID         PRIMARY KEY DEFAULT uuid_generate_v4(),
+        id                UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
         key_issue         TEXT         NOT NULL,
         corrective_action TEXT         NOT NULL DEFAULT '',
         responsibility    VARCHAR(255) NOT NULL DEFAULT '',
@@ -53,7 +53,7 @@ class QprDomain_1700000000016 {
     `);
         await queryRunner.query(`
       CREATE TABLE IF NOT EXISTS quarterly_progress_reports (
-        id                                  UUID         PRIMARY KEY DEFAULT uuid_generate_v4(),
+        id                                  UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
         year                                INTEGER      NOT NULL,
         quarter                             INTEGER      NOT NULL,
         executive_summary                   TEXT         NOT NULL DEFAULT '',
@@ -74,7 +74,7 @@ class QprDomain_1700000000016 {
     `);
         await queryRunner.query(`
       CREATE TABLE IF NOT EXISTS activity_quarterly_status (
-        id                    UUID         PRIMARY KEY DEFAULT uuid_generate_v4(),
+        id                    UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
         logframe_node_id      UUID         NOT NULL REFERENCES logframe_nodes(id) ON DELETE CASCADE,
         year                  INTEGER      NOT NULL,
         quarter               INTEGER      NOT NULL,
@@ -100,11 +100,11 @@ class QprDomain_1700000000016 {
       ALTER TABLE indicator_year_targets
         ADD COLUMN IF NOT EXISTS is_original BOOLEAN NOT NULL DEFAULT true,
         ADD COLUMN IF NOT EXISTS revision_year INTEGER,
-        ADD COLUMN IF NOT EXISTS id UUID DEFAULT uuid_generate_v4()
+        ADD COLUMN IF NOT EXISTS id UUID DEFAULT gen_random_uuid()
     `);
         await queryRunner.query(`
       UPDATE indicator_year_targets
-        SET id = uuid_generate_v4()
+        SET id = gen_random_uuid()
         WHERE id IS NULL
     `);
         await queryRunner.query(`
@@ -122,7 +122,7 @@ class QprDomain_1700000000016 {
     `);
         await queryRunner.query(`
       CREATE TABLE IF NOT EXISTS project_covenants (
-        id            UUID         PRIMARY KEY DEFAULT uuid_generate_v4(),
+        id            UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
         covenant_text TEXT         NOT NULL,
         type          VARCHAR(50)  NOT NULL,
         status        VARCHAR(20)  NOT NULL DEFAULT 'pending_initiation',
@@ -138,7 +138,7 @@ class QprDomain_1700000000016 {
     `);
         await queryRunner.query(`
       CREATE TABLE IF NOT EXISTS safeguard_measures (
-        id                   UUID          PRIMARY KEY DEFAULT uuid_generate_v4(),
+        id                   UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
         type                 VARCHAR(20)   NOT NULL,
         measure_name         VARCHAR(255)  NOT NULL,
         total_count          INTEGER       NOT NULL DEFAULT 0,
@@ -156,7 +156,7 @@ class QprDomain_1700000000016 {
     `);
         await queryRunner.query(`
       CREATE TABLE IF NOT EXISTS audit_findings (
-        id                         UUID         PRIMARY KEY DEFAULT uuid_generate_v4(),
+        id                         UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
         year                       INTEGER      NOT NULL,
         audit_status               VARCHAR(20)  NOT NULL DEFAULT 'pending_initiation',
         key_issue                  TEXT         NOT NULL,
