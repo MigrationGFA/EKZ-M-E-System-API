@@ -36,10 +36,19 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const typeorm_1 = require("typeorm");
 const dotenv = __importStar(require("dotenv"));
 dotenv.config();
-const url = process.env.DATABASE_URL;
+const dbHost = process.env.DB_HOST || 'localhost';
+const dbPort = process.env.DB_PORT || '5432';
+const dbUser = process.env.DB_USER || 'ekitikno_ekzuser';
+const dbPassword = process.env.DB_PASSWORD || '';
+const dbName = process.env.DB_NAME || 'ekitikno_ekz';
+const DATABASE_URL = process.env.DATABASE_URL ||
+    `postgresql://${dbUser}:${dbPassword}@${dbHost}:${dbPort}/${dbName}`;
 exports.default = new typeorm_1.DataSource({
     type: 'postgres',
-    url,
+    url: DATABASE_URL,
+    migrations: [__dirname + '/database/migrations/*.js'],
+    synchronize: false,
+    migrationsRun: true,
     entities: [
         __dirname + '/users/user.entity.ts',
         __dirname + '/alerts/alert.entity.ts',
@@ -67,8 +76,7 @@ exports.default = new typeorm_1.DataSource({
         __dirname + '/quarterly-reports/quarterly-progress-report.entity.ts',
         __dirname + '/reports/report.entity.ts',
         __dirname + '/submissions/submission.entity.ts',
+        __dirname + '/users/user.entity.ts',
     ],
-    migrations: [__dirname + '/database/migrations/*{.ts,.js}'],
-    synchronize: false,
 });
 //# sourceMappingURL=data-source.js.map

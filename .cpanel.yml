@@ -6,6 +6,7 @@ deployment:
     - /bin/rm -rf $DEPLOYPATH/dist
     - /bin/cp -R dist $DEPLOYPATH/dist
     - /bin/cp package.json $DEPLOYPATH/package.json
+    - /bin/cp package-lock.json $DEPLOYPATH/package-lock.json
     - /bin/cp app.js $DEPLOYPATH/app.js
     - /bin/mkdir -p $DEPLOYPATH/tmp
     - /bin/touch $DEPLOYPATH/tmp/restart.txt
