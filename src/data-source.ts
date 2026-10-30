@@ -22,7 +22,6 @@ export default new DataSource({
   synchronize: false,
   // Run migrations on startup
   migrationsRun: true,
-  uuidExtension: 'pgcrypto',
   installExtensions: false,
   // retryAttempts: 3,
   // Explicitly list entities to avoid module resolution order issues
